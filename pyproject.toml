@@ -1,0 +1,90 @@
+# AIReliable Engine SDK
+# 独立 PyPI 包：aireliable-engine-sdk
+# 引擎开发者通过 `pip install aireliable-engine-sdk` 即可开发可插拔引擎。
+# 详见 v0.2-analysis.md §11 / PR/development-guide.md §31。
+
+[project]
+name = "aireliable-engine-sdk"
+version = "0.2.0"
+description = "AIReliable Engine SDK - 开发可插拔引擎的工具包"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+authors = [{name = "AIReliable Team"}]
+license = "Apache-2.0"
+keywords = ["aireliable", "engine", "sdk", "ai", "inference", "workflow"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries",
+]
+
+# SDK 自身依赖（平台层最小集合，引擎运行依赖在引擎 envs/<env>/pyproject.toml 声明）
+dependencies = [
+    "pydantic>=2.0",                    # 8 端点 schema 契约
+    "fastapi>=0.115.0",                 # 引擎 HTTP 服务
+    "uvicorn[standard]",                # ASGI server
+    "pyyaml>=6.0",                      # 工作流 yaml 解析
+    "httpx>=0.27.0",                    # 下载器 / 远程引擎调用
+    "pillow",                           # Images 数据类依赖
+    "numpy>=1.24.0",                    # Audio.samples / Image.from_array 数据类型
+    "huggingface_hub>=0.25.0",          # 通用下载器组件
+]
+
+# 引擎开发者按需选装：pip install "aireliable-engine-sdk[image]"
+[project.optional-dependencies]
+image = [
+    "torch>=2.3.0",
+    "diffusers>=0.31.0",
+    "transformers>=4.45.0",
+    "safetensors",
+]
+video = [
+    "torch>=2.3.0",
+    "diffusers>=0.31.0",
+    "transformers>=4.45.0",
+]
+voice = [
+    "torch>=2.3.0",
+    "transformers>=4.45.0",
+]
+llm = [
+    "torch>=2.3.0",
+    "transformers>=4.45.0",
+]
+gradio = [
+    "gradio>=4.44.0",                  # 引擎 Web UI（可选，不强制装）
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aireliable_engine"]
+
+# ===== 测试配置 =====
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# ===== 代码风格 =====
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "UP"]
+ignore = ["E501"]  # 行长警告交给 formatter
