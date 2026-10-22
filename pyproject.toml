@@ -21,15 +21,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Topic :: Software Development :: Libraries",
 ]
-
-[project.urls]
-Homepage = "https://github.com/AIJianGe/aireliable-engine-sdk"
-Repository = "https://github.com/AIJianGe/aireliable-engine-sdk"
-Issues = "https://github.com/AIJianGe/aireliable-engine-sdk/issues"
-
-[project.scripts]
-aireliable-engine = "aireliable_engine.cli:main"
-
 # SDK 自身依赖（平台层最小集合，引擎运行依赖在引擎 envs/<env>/pyproject.toml 声明）
 dependencies = [
     "pydantic>=2.0",                    # 8 端点 schema 契约
@@ -42,6 +33,14 @@ dependencies = [
     "huggingface_hub>=0.25.0",          # 通用下载器组件
     "py7zr>=0.21.0",                    # pack 输出 .airengine（7z）包
 ]
+
+[project.urls]
+Homepage = "https://github.com/AIJianGe/aireliable-engine-sdk"
+Repository = "https://github.com/AIJianGe/aireliable-engine-sdk"
+Issues = "https://github.com/AIJianGe/aireliable-engine-sdk/issues"
+
+[project.scripts]
+aireliable-engine = "aireliable_engine.cli:main"
 
 # 引擎开发者按需选装：pip install "aireliable-engine-sdk[image]"
 [project.optional-dependencies]
