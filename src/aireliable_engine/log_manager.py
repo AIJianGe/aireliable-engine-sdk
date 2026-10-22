@@ -230,7 +230,6 @@ class SSELogSubscriber:
 
         v0.2.5+ 心跳保活：空闲时每 15 秒发送 `: heartbeat\\n\\n`（SSE 注释帧），
         防止 reqwest/中间网络设备因空闲超时断开连接。
-        详见 architecture.md §3.8 SSE 心跳机制、development-guide.md §28.21 子规则 1。
         """
         import json
 

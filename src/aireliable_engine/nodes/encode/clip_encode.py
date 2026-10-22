@@ -20,9 +20,6 @@ v0.2.5 ComfyUI 风格改造（B1）：
 
 支持 prompt + negative_prompt 两路编码，符合 OpenAI / diffusers 标准。
 
-参考：
-    - PR/architecture.md §12.2 / §12.2.6（节点示例）
-    - PR/development-guide.md §28.5（数据类型规范）
     - v0.2-tasks.md 任务 3.5
     - v0.2.5-universal-nodes-analysis.md §五（3）
     - v0.2.5 ComfyUI 风格改造：ctx.extra 全局 CLIP 共享（方向 B）

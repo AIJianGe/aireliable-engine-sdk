@@ -141,10 +141,10 @@ class TestLoadRequestResponse:
         r = LoadRequest(variant="ernie-image-q4")
         assert r.variant == "ernie-image-q4"
 
-    def test_load_request_missing_variant(self):
-        """LoadRequest 缺 variant 抛 ValidationError。"""
-        with pytest.raises(ValidationError):
-            LoadRequest()
+    def test_load_request_variant_optional(self):
+        """LoadRequest 的 variant 可省略（由引擎选择默认档位）。"""
+        r = LoadRequest()
+        assert r.variant is None
 
     def test_load_response_basic(self):
         """LoadResponse 字段。"""
@@ -339,7 +339,14 @@ class TestSerialization:
         """HealthResponse 序列化为 dict。"""
         r = HealthResponse(engine_id="e", state="idle", uptime=1.5)
         d = r.model_dump()
-        assert d == {"status": "ok", "engine_id": "e", "state": "idle", "uptime": 1.5}
+        assert d == {
+            "status": "ok",
+            "engine_id": "e",
+            "state": "idle",
+            "uptime": 1.5,
+            "engine_api_version": r.engine_api_version,
+        }
+        assert d["engine_api_version"]
 
     def test_health_response_to_json(self):
         """HealthResponse 序列化为 JSON。"""

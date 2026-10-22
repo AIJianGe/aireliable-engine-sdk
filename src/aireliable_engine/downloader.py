@@ -59,7 +59,6 @@ SLOW_DURATION_SECONDS = 60.0            # 持续 60 秒
 class _EngineHFMirrorSelector:
     """engine 进程内的简化版镜像站选择器。
 
-    与 ``core/src/core/hf_mirrors.py::HFMirrorSelector`` 行为一致，
     但放在 base 层避免循环 import。
 
     特性：

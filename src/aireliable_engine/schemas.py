@@ -65,7 +65,6 @@ class CapabilitiesResponse(BaseModel):
     default_variant: Optional[str] = None
     # 引擎推理输入的 JSON Schema（v0.4.1+ MCP 化新增，可选字段向后兼容）。
     # 引擎在 _capabilities_impl 中导出：input_schema = XxxInputs.model_json_schema()
-    # MCP 专属层据此动态生成全参数 tool（详见 ANALYSIS-TASKS/
     # PLATFORM_MCP_INTEGRATION_ANALYSIS.md §3.4）；旧引擎不导出时为 None，
     # MCP 专属层回退到通用层 tool，平台其余组件不受影响。
     input_schema: Optional[dict[str, Any]] = None

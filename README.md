@@ -167,25 +167,7 @@ curl -X POST http://127.0.0.1:7100/infer -H "Content-Type: application/json" -d 
 
 ---
 
-## 五、工作流示例
-
-```yaml
-# workflows/default.yaml
-nodes:
-  - id: text_input
-    type: TextInput
-    params:
-      value: ""
-
-outputs:
-  text: ${text_input.text}
-```
-
-节点定义、引用语法与自定义节点注册方式见后续 `docs/workflow.md`（随 SDK 文档集提供）。
-
----
-
-## 六、约定（必读）
+## 五、约定（必读）
 
 1. **engine_id**：`^[a-z][a-z0-9_]{1,63}$`，小写字母开头，仅小写字母/数字/下划线，禁止连字符。
 2. **manifest**：`manifest.yaml` 放在引擎根目录，字段变更需同步 `manifest_schema_version`。
@@ -195,15 +177,24 @@ outputs:
 
 ---
 
+## 六、文档
+
+完整文档集在 [docs/README.md](docs/README.md)，按需查阅：
+
+| 文档 | 内容 |
+|---|---|
+| [manifest.yaml](docs/manifest.md) | 全字段、校验规则、models 块 |
+| [HTTP 契约](docs/http-contract.md) | 8 端点、SSE 帧、错误格式、版本握手 |
+| [工作流](docs/workflow.md) | YAML 结构、引用语法、条件 DSL、自定义节点 |
+| [打包与分发](docs/package.md) | 包布局、`pack`、内容哈希、导入与来源记录 |
+| [常见问题](docs/faq.md) | 启动、校验、推理、兼容性报错 |
+
 ## 七、开发与测试
 
 ```bash
 git clone https://github.com/AIJianGe/aireliable-engine-sdk.git
-cd aireliable-engine-sdk
-pip install -e ".[dev]"
-
-pytest tests/ -v
-ruff check src/ tests/
+cd aireliable-engine-sdk && pip install -e ".[dev]"
+pytest tests/ -v && ruff check src/ tests/
 ```
 
 ---

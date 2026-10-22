@@ -3,10 +3,7 @@
 范式 B 引擎的抽象基类，继承自 BaseEngine。
 
 设计参考：
-    - v0.2-analysis.md §7 ERNIE-Image 改造方案
     - v0.2-tasks.md 任务 5.1
-    - PR/architecture.md §12.7 WorkflowEngine 基类
-    - PR/development-guide.md §27 范式声明
 
 核心特性：
     1. 继承 BaseEngine 8 端点契约（与范式 A/C 完全兼容）
@@ -181,7 +178,6 @@ class WorkflowEngine(BaseEngine):
         # - 子类从 EngineConfig.models_root 注入
         # - EngineConfig.models_root 由调度层 CoreConfig.models_root → 子进程环境变量 AIRELIABLE_MODELS_ROOT
         # - 为 None 时 fallback 到 Path("models/")（向后兼容旧 v0.1/v0.2 引擎）
-        # 详见 PR/architecture.md §16.7 双源真相消除 + §16.6 manifest.yaml 落地路径
         self.models_root: Path = models_root if models_root is not None else Path("models/")
 
         # 运行态记录

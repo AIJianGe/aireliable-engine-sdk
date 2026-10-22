@@ -14,10 +14,7 @@
     - 远程引擎支持 readonly_workflows 模式（任务 13.2）
     - 远程引擎支持 workflow_sync 开关（控制 PUT/DELETE 是否可用）
 
-参考：
-    - v0.2-analysis.md §13 远程引擎范式 B
     - v0.2-tasks.md 任务 13.1 / 13.2
-    - PR/architecture.md §15 远程引擎范式 B
 """
 
 from __future__ import annotations
@@ -275,7 +272,6 @@ def _register_standard_endpoints(app: FastAPI, engine: BaseEngine) -> None:
     async def load(request: LoadRequest) -> dict:
         """加载 variant 到显存（v0.2.5+ 幂等）。
 
-        幂等规则（详见 PR/architecture.md §3.12）：
             - 已加载同 variant → 直接返回 success（不重复加载）
             - 已加载不同 variant → 先卸载旧模型再加载新模型
             - 未加载 → 正常加载
@@ -312,7 +308,6 @@ def _register_standard_endpoints(app: FastAPI, engine: BaseEngine) -> None:
     async def unload() -> dict:
         """卸载模型（v0.2.5+ 幂等）。
 
-        幂等规则（详见 PR/architecture.md §3.12）：
             - 已卸载（无模型加载）→ 直接返回 success
             - 已加载 → 正常卸载
         """

@@ -88,7 +88,9 @@ class TestLoaderNodesDirField:
 
     def test_vae_loader_vae_name_has_dir(self):
         schema = VAELoaderNode.params_schema
-        assert schema["vae_name"].get("dir") == "shared/vae/"
+        # v0.2.5：VAE 目录随 source 联动，不再是单一 dir
+        assert schema["vae_name"].get("dir_depends_on") == "source"
+        assert schema["vae_name"]["dir_map"]["shared"] == "shared/vae/"
 
     def test_lora_loader_lora_name_has_dir(self):
         schema = LoRALoaderNode.params_schema
@@ -205,7 +207,9 @@ class TestFrontendFallbackDirField:
         assert 'clip_name: { type: "string", required: true, format: "enum-from-dir", dir: "shared/text_encoders/"' in node_defs_content
 
     def test_vae_loader_fallback_has_dir(self, node_defs_content: str):
-        assert 'vae_name: { type: "string", required: true, format: "enum-from-dir", dir: "shared/vae/"' in node_defs_content
+        # v0.2.5：VAE 目录随 source 联动（dir_depends_on + dir_map）
+        assert 'dir_depends_on: "source"' in node_defs_content
+        assert 'shared: "shared/vae/"' in node_defs_content
 
     def test_lora_loader_fallback_has_dir(self, node_defs_content: str):
         # LoRALoader + LoRALoaderAdvanced 都应有 dir: "image/loras/"

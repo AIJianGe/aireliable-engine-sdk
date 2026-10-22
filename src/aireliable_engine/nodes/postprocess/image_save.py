@@ -19,9 +19,6 @@
     outputs:
       image_urls: save.output.image_urls
 
-参考：
-    - PR/architecture.md §12.2 / §12.4（工作流示例）
-    - PR/development-guide.md §28.5（数据类型规范）
     - v0.2-tasks.md 任务 3.8
 """
 

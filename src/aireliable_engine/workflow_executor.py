@@ -1,9 +1,6 @@
 """工作流执行器（v0.2 新增）。
 
 设计参考：
-    - v0.2-analysis.md §12（工作流引擎架构）
-    - PR/architecture.md §12.5（WorkflowExecutor）
-    - PR/development-guide.md §29（工作流 yaml 规范）
 
 核心特性：
     1. **yaml/dict 双输入**：接受 yaml 字符串或已解析的 dict
@@ -198,7 +195,6 @@ class WorkflowExecutor:
     Args:
         workflow: 工作流定义，可以是 yaml 字符串或已解析的 dict。
             dict 格式：``{"name": ..., "nodes": [...], "outputs": {...}}``
-            或 ``{"workflow": {...}}`` 嵌套结构（兼容 development-guide.md §29.1）
         registry: 节点注册表。若为 None，使用全局默认注册表。
 
     Raises:

@@ -3,9 +3,6 @@
 定义工作流编排的基本单元：节点（Node）。
 
 设计参考：
-    - v0.2-analysis.md §4.1 / §4.2 / §11.2
-    - PR/architecture.md §12.2
-    - PR/development-guide.md §28.1
 
 核心概念：
     - BaseNode：所有节点的抽象基类，子类实现 execute(inputs, ctx) -> outputs
@@ -57,7 +54,6 @@ class PortSpec:
     Attributes:
         name: 端口名（如 "images" / "latent" / "prompt_embeds"）。
             同一节点内端口名必须唯一。
-        type: 端口类型字符串，详见 PR/development-guide.md §28.7：
             - "image"   → Image（单张图片）
             - "images"  → Images（多图数组，variadic）
             - "audio"   → Audio（单段音频）
@@ -75,7 +71,6 @@ class PortSpec:
         variadic: 是否为变长数组端口。True 表示该端口接受数组
             （如 images: Images 接受 0~N 张图）。默认 False。
 
-    节点间数据传递规则详见 PR/development-guide.md §28.6。
     """
 
     name: str

@@ -8,8 +8,6 @@
 
 参考：
     - v0.2-tasks.md 任务 5.3
-    - PR/architecture.md §12.4 工作流 graph 结构
-    - PR/architecture.md §12.7 WorkflowEngine 基类
 """
 
 from __future__ import annotations
@@ -413,10 +411,11 @@ class TestErnieImageEndToEnd:
 
         # 验证帧序列
         assert len(frames) >= 3
-        # 第一帧：workflow_start
-        assert frames[0]["stage"] == "workflow_start"
-        assert frames[0]["workflow"] == "default"
-        assert frames[0]["variant"] == "ernie-q4"
+        # 首个业务帧：workflow_start（其前可能有自动加载的 model_loading 帧）
+        business = [f for f in frames if f["stage"] != "model_loading"]
+        assert business[0]["stage"] == "workflow_start"
+        assert business[0]["workflow"] == "default"
+        assert business[0]["variant"] == "ernie-q4"
 
         # workflow_loaded 帧（含执行顺序）
         loaded = next(f for f in frames if f["stage"] == "workflow_loaded")
@@ -593,7 +592,8 @@ outputs:
         req1 = InferRequest(variant="v1", inputs={"prompt": "from_default"})
         frames1 = await _collect_infer_frames(engine, req1)
         assert frames1[-1]["stage"] == "completed"
-        assert frames1[0]["workflow"] == "default"
+        business1 = [f for f in frames1 if f["stage"] != "model_loading"]
+        assert business1[0]["workflow"] == "default"
         # ImageSave 包装到 list
         assert frames1[-1]["result"]["result"] == ["from_default"]
 
@@ -640,12 +640,14 @@ outputs:
         # 默认用 a
         req = InferRequest(variant="v", inputs={"prompt": "hello"})
         frames1 = await _collect_infer_frames(engine, req)
-        assert frames1[0]["workflow"] == "a"
+        business1 = [f for f in frames1 if f["stage"] != "model_loading"]
+        assert business1[0]["workflow"] == "a"
 
         # 切换默认到 b
         engine.set_current_workflow("b")
         frames2 = await _collect_infer_frames(engine, req)
-        assert frames2[0]["workflow"] == "b"
+        business2 = [f for f in frames2 if f["stage"] != "model_loading"]
+        assert business2[0]["workflow"] == "b"
 
 
 # ===========================================================================
@@ -669,8 +671,9 @@ class TestErrorScenarios:
         )
         frames = await _collect_infer_frames(engine, request)
 
-        # 第一帧是 workflow_start（即使工作流不存在也推送开始帧）
-        assert frames[0]["stage"] == "workflow_start"
+        # 首个业务帧是 workflow_start（即使工作流不存在也推送开始帧）
+        business = [f for f in frames if f["stage"] != "model_loading"]
+        assert business[0]["stage"] == "workflow_start"
         # 然后是错误帧
         error_frames = [f for f in frames if f["stage"] == "error"]
         assert len(error_frames) == 1
@@ -950,10 +953,11 @@ class TestProgressFrames:
         # 至少 3 帧
         assert len(frames) >= 3
 
-        # 第一帧：workflow_start
-        assert frames[0]["stage"] == "workflow_start"
-        assert frames[0]["progress"] == 0.0
-        assert "workflow" in frames[0]
+        # 首个业务帧：workflow_start（首次 infer 前可能有 model_loading 帧）
+        business = [f for f in frames if f["stage"] != "model_loading"]
+        assert business[0]["stage"] == "workflow_start"
+        assert business[0]["progress"] == 0.0
+        assert "workflow" in business[0]
 
         # 中间帧：workflow_loaded
         loaded_frames = [f for f in frames if f["stage"] == "workflow_loaded"]
@@ -970,8 +974,11 @@ class TestProgressFrames:
         request = InferRequest(variant="v", inputs={"prompt": "test"})
         frames = await _collect_infer_frames(ernie_engine, request)
 
-        # 收集所有进度值
-        progresses = [f["progress"] for f in frames if "progress" in f]
+        # 收集业务帧进度值（model_loading 属于独立的加载阶段，不参与工作流进度）
+        progresses = [
+            f["progress"] for f in frames
+            if "progress" in f and f["stage"] != "model_loading"
+        ]
         # 验证单调非递减
         for i in range(1, len(progresses)):
             assert progresses[i] >= progresses[i - 1], \

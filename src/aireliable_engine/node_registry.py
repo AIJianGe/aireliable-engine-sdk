@@ -3,9 +3,6 @@
 提供节点类的注册、查询与自动发现机制。
 
 设计参考：
-    - v0.2-analysis.md §11.2 / §12.4
-    - PR/architecture.md §12.2
-    - PR/development-guide.md §28.3
 
 核心特性：
     1. 显式注册：register_node("TypeName", NodeClass) 或 @register_node 装饰器

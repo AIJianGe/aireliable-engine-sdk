@@ -10,9 +10,6 @@ WorkflowContext 是节点执行时的运行时上下文，封装节点需要的�
     - 原始请求字段（inputs / loras）
 
 设计参考：
-    - v0.2-analysis.md §4.3 / §11.2
-    - PR/architecture.md §12.7
-    - PR/development-guide.md §28.1
 
 使用示例：
     ctx = WorkflowContext(
@@ -270,7 +267,6 @@ class WorkflowContext:
                     * 不应硬编码路径，必须通过 manifest 声明的 target_dir 拼接
                     * 避免与 CHECKPOINT_SUBDIR 常量混用（v0.2.1 起改读环境变量 AIRELIABLE_MODEL_LAYOUT_BASE）
 
-                - 详见：PR/architecture.md §16.6 manifest.yaml 落地路径 + §16.7 双源真相消除
         task_id: 任务 ID（用于日志追踪 / 文件命名）。
         progress_reporter: 进度上报器。节点调用 ctx.report_progress() 推送进度。
         cancel_event: 取消事件。节点应定期检查并主动退出。

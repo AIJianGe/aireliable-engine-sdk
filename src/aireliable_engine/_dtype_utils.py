@@ -11,7 +11,6 @@
 
 参考：
     - v0.2.5-loader-dropdown-analysis.md §3.3.1 文件名后缀推断
-    - PR/architecture.md §20.21 dtype 自动推断规范
 """
 
 from __future__ import annotations

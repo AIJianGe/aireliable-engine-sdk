@@ -410,12 +410,11 @@ class TestConcurrency:
     """并发场景测试。"""
 
     @pytest.mark.asyncio
-    async def test_concurrent_loads_one_succeeds_one_fails(self):
+    async def test_concurrent_loads_are_serialized(self):
         """两个 load 同时调用：op_lock 串行化，第二个进入时 state 已 READY。
 
-        由于 ``op_lock`` 强制串行化，第二个 load 调用进入时第一个已经完成
-        （state=READY）。READY→LOADING 不在允许转换集合里（READY 只能到
-        {INFERRING, IDLE, ERROR}），所以第二个会抛 ValueError（状态机层防护）。
+        第二个 load 会先 ``_unload_impl`` 再重新加载（v0.3.7+ 的 READY 处理），
+        因此两个调用都成功，最终状态仍是 READY。
         """
         eng = _MockEngine()
 
@@ -436,13 +435,9 @@ class TestConcurrency:
             try_load(), try_load(), return_exceptions=True
         )
 
-        # 一个成功，一个抛异常
-        successes = [r for r in results if not isinstance(r, Exception)]
-        errors = [r for r in results if isinstance(r, Exception)]
-        assert len(successes) == 1
-        assert len(errors) == 1
-        # 第二个 load 进入时 state=READY，transition(LOADING) 抛 ValueError
-        assert isinstance(errors[0], ValueError)
+        # 两个都成功，状态保持 READY
+        assert all(not isinstance(r, Exception) for r in results), results
+        assert eng.state_machine.state == RuntimeState.READY
 
     @pytest.mark.asyncio
     async def test_load_when_loading_state_raises_busy(self):

@@ -19,9 +19,6 @@ v0.2.5 简化：删除 role_filter / max_count / download_timeout / max_image_si
 accept_roles 5 个 advanced 参数，节点仅保留 image_paths 一个画布调试参数。
 API 调用时通过 ctx.inputs 注入图片列表，无需 advanced 参数。
 
-参考：
-    - v0.2-analysis.md §5.2.3 多图输入请求体
-    - PR/architecture.md §12.2.4 多图输入节点
 """
 
 from __future__ import annotations

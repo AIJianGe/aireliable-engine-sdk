@@ -7,7 +7,6 @@
 
 参考：
     - v0.2-tasks.md 任务 5.2
-    - PR/architecture.md §12.7 WorkflowEngine 基类
 """
 
 from __future__ import annotations
@@ -450,16 +449,19 @@ class TestInference:
         async for frame in simple_engine.infer(request):
             frames.append(json.loads(frame[len("data: "):-2]))
 
-        # 验证至少有开始帧 + 加载完成帧 + 最终帧
-        assert len(frames) >= 3
-        # 第一帧：workflow_start
-        assert frames[0]["stage"] == "workflow_start"
-        assert frames[0]["workflow"] == "default"
+        # 首次 infer 会先自动加载，model_loading 帧必须在 workflow 帧之前
+        stages = [f["stage"] for f in frames]
+        assert stages.index("model_loading") < stages.index("workflow_start")
+
+        business = [f for f in frames if f["stage"] != "model_loading"]
+        assert len(business) >= 3
+        # 工作流第一帧：workflow_start
+        assert business[0]["stage"] == "workflow_start"
+        assert business[0]["workflow"] == "default"
         # 最终帧：completed
-        assert frames[-1]["stage"] == "completed"
-        assert frames[-1]["progress"] == 1.0
-        assert "result" in frames[-1]
-        assert frames[-1]["result"]["result"] == "hello workflow"
+        assert business[-1]["stage"] == "completed"
+        assert business[-1]["progress"] == 1.0
+        assert business[-1]["result"]["result"] == "hello workflow"
 
     @pytest.mark.asyncio
     async def test_inference_workflow_loaded_frame(self, simple_engine):
@@ -523,8 +525,9 @@ outputs:
         async for frame in engine.infer(request):
             frames.append(json.loads(frame[len("data: "):-2]))
 
-        assert frames[0]["workflow"] == "alt"
-        assert frames[-1]["result"]["result"] == "from alt workflow"
+        business = [f for f in frames if f["stage"] != "model_loading"]
+        assert business[0]["workflow"] == "alt"
+        assert business[-1]["result"]["result"] == "from alt workflow"
 
     @pytest.mark.asyncio
     async def test_inference_workflow_not_found(self, registry):
@@ -542,8 +545,9 @@ outputs:
         async for frame in engine.infer(request):
             frames.append(json.loads(frame[len("data: "):-2]))
 
-        # 第一帧是 workflow_start
-        assert frames[0]["stage"] == "workflow_start"
+        # 首个业务帧是 workflow_start（其前可能有自动加载的 model_loading 帧）
+        business = [f for f in frames if f["stage"] != "model_loading"]
+        assert business[0]["stage"] == "workflow_start"
         # 第二帧应该是错误帧
         error_frames = [f for f in frames if f["stage"] == "error"]
         assert len(error_frames) == 1

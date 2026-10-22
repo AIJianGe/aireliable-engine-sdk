@@ -3,11 +3,7 @@
 定义节点间传递的标准数据类型，配合 PortSpec.type 字段使用。
 
 设计参考：
-    - v0.2-analysis.md §5.4 / §11.2
-    - PR/architecture.md §12.3
-    - PR/development-guide.md §28.5
 
-端口类型映射表（PR/development-guide.md §28.7）：
     | type 值    | Python 类型         | 用途                |
     |------------|---------------------|---------------------|
     | image      | Image               | 单张图片            |

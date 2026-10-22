@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-import zipfile
 from pathlib import Path
 
+import py7zr
 import pytest
 import yaml
 
@@ -115,14 +115,19 @@ def test_pack_layout_and_hash(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     archive = Path(payload["archive"])
     assert archive.is_file()
 
-    with zipfile.ZipFile(archive) as zf:
-        names = set(zf.namelist())
+    with py7zr.SevenZipFile(archive) as zf:
+        names = set(zf.getnames())
     assert {"manifest.yaml", "registry.yaml", "env/pyproject.toml", "package.json"} <= names
-    assert "code/demo_engine/server.py" in names
+    # code/<engine_id>/ 对应平台 engines/<engine_id>/，必须保留工程根布局
+    assert "code/demo_engine/demo_engine/server.py" in names
+    assert "code/demo_engine/workflows/default.yaml" in names
+    assert "code/demo_engine/manifest.yaml" in names
 
-    with zipfile.ZipFile(archive) as zf:
-        manifest = yaml.safe_load(zf.read("manifest.yaml"))
-        meta = json.loads(zf.read("package.json"))
+    unpacked = tmp_path / "unpacked"
+    with py7zr.SevenZipFile(archive) as zf:
+        zf.extractall(path=unpacked)
+    manifest = yaml.safe_load((unpacked / "manifest.yaml").read_text(encoding="utf-8"))
+    meta = json.loads((unpacked / "package.json").read_text(encoding="utf-8"))
     assert manifest["package"]["sha256"] == payload["sha256"]
     assert meta["sha256"] == payload["sha256"]
 

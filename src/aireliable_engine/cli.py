@@ -25,7 +25,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +48,9 @@ from .package import (
 EXIT_OK = 0
 EXIT_VALIDATION = 2
 EXIT_RUNTIME = 3
+
+# engine_id 允许的形态，用于判断"目录名是否像一个 engine_id"
+_ENGINE_ID_RE = re.compile(r"[a-z][a-z0-9_]{1,63}")
 
 _CAPABILITY_TYPES = {
     "image": "image",
@@ -161,7 +163,9 @@ def collect_validation(root: Path, *, strict: bool = False) -> dict[str, Any]:
         }
 
     # 2. 必需文件 / 目录名
-    if root.name != engine_id:
+    # 仅当目录名本身符合 engine_id 命名时才提示不一致；
+    # 模板/源码仓根目录（如 aireliable-engine-template）命名不受此限制。
+    if _ENGINE_ID_RE.fullmatch(root.name) and root.name != engine_id:
         warnings.append(
             f"目录名 {root.name!r} 与 engine_id {engine_id!r} 不一致（pack 后不受影响）"
         )
@@ -278,7 +282,28 @@ def cmd_validate(args: argparse.Namespace) -> int:
 # init（内置最小模板，离线可用）
 # ===========================================================================
 
+_APACHE_LICENSE_NOTICE = """\
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+Copyright {{ENGINE_NAME}} Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 _TEMPLATE_FILES: dict[str, str] = {
+    "LICENSE": _APACHE_LICENSE_NOTICE,
     "manifest.yaml": """\
 manifest_schema_version: "0.4"
 engine_id: {{ENGINE_ID}}
@@ -476,7 +501,7 @@ aireliable-engine run --port 7100
 1. 修改 `{{MODULE}}/engine.py` 实现业务逻辑；
 2. 修改 `workflows/default.yaml` 编排节点；
 3. `aireliable-engine validate` → `aireliable-engine pack`；
-4. 在 AIReliable 客户端导入 `dist/*.zip`。
+4. 在 AIReliable 客户端导入 `dist/*.airengine`。
 """,
     ".gitignore": """\
 __pycache__/
@@ -503,7 +528,8 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     engine_id = (args.id or target.name).strip()
     module = _module_name(engine_id)
-    class_name = "".join(part.capitalize() for part in module.split("_")) + "Engine"
+    class_base = "".join(part.capitalize() for part in module.split("_"))
+    class_name = class_base if class_base.endswith("Engine") else class_base + "Engine"
     capability = args.capability
     mapping = {
         "ENGINE_ID": engine_id,
@@ -534,11 +560,34 @@ def cmd_init(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+_TEXT_SUFFIXES = frozenset({".py", ".yaml", ".yml", ".toml", ".md", ".txt", ".json"})
+
+# 官方模板仓使用这三个具体标记；init --template 会整体替换为目标命名
+_TEMPLATE_MARKERS = {
+    "ExampleEngine": "CLASS_NAME",
+    "Example Engine": "ENGINE_NAME",
+    "example_engine": "ENGINE_ID",
+    "text-to-image": "CAPABILITY",
+}
+
+
 def _init_from_template(template: str, target: Path, mapping: dict[str, str]) -> bool:
-    """从本地目录或 git 仓库复制模板；失败返回 False。"""
+    """从本地目录或 git 仓库复制模板，并重命名到目标 engine_id。
+
+    模板约定（官方 `aireliable-engine-template`）：
+        - 模块目录固定为 ``example_engine/``
+        - 文本中以 ``ExampleEngine`` / ``Example Engine`` / ``example_engine`` 作为占位标记
+
+    也支持使用 ``{{ENGINE_ID}}`` 这类花括号占位符的自定义模板。
+    """
     source = Path(template).resolve()
     if source.is_dir():
-        shutil.copytree(source, target, dirs_exist_ok=True)
+        shutil.copytree(
+            source,
+            target,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git", ".venv", "dist"),
+        )
     else:
         result = subprocess.run(
             ["git", "clone", "--depth", "1", template, str(target)],
@@ -548,10 +597,23 @@ def _init_from_template(template: str, target: Path, mapping: dict[str, str]) ->
         if result.returncode != 0:
             print(f"拉取模板失败：{result.stderr.strip()}", file=sys.stderr)
             return False
-    manifest = target / "manifest.yaml"
-    if manifest.is_file():
-        manifest.write_text(_render(manifest.read_text(encoding="utf-8"), mapping),
-                            encoding="utf-8")
+        shutil.rmtree(target / ".git", ignore_errors=True)
+
+    old_module = target / "example_engine"
+    new_module = target / mapping["MODULE"]
+    if old_module.is_dir() and old_module != new_module:
+        old_module.rename(new_module)
+
+    for path in target.rglob("*"):
+        if not path.is_file() or path.suffix not in _TEXT_SUFFIXES:
+            continue
+        text = path.read_text(encoding="utf-8")
+        text = _render(text, mapping)
+        for marker, key in _TEMPLATE_MARKERS.items():
+            text = text.replace(marker, mapping[key])
+        if mapping["ENGINE_TYPE"] != "image":
+            text = text.replace("type: image", f"type: {mapping['ENGINE_TYPE']}")
+        path.write_text(text, encoding="utf-8")
     return True
 
 
@@ -632,7 +694,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
     schema = _load_manifest(root)
     output_dir = Path(args.output or (root / "dist")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    archive = output_dir / f"{schema.engine_id}-{schema.engine_version}.zip"
+    archive = output_dir / f"{schema.engine_id}-{schema.engine_version}.airengine"
 
     staging = output_dir / f".staging-{schema.engine_id}"
     if staging.exists():
@@ -650,15 +712,16 @@ def cmd_pack(args: argparse.Namespace) -> int:
         if (root / "env" / "uv.lock").is_file():
             shutil.copy2(root / "env" / "uv.lock", staging / "env" / "uv.lock")
 
+        # code/<engine_id>/ → 平台 engines/<engine_id>/（整个工程根，含包内模块与 workflows）
         code_dir = staging / "code" / schema.engine_id
         code_dir.parent.mkdir(parents=True)
-        module_dir = root / _module_name(schema.engine_id)
-        source_dir = module_dir if module_dir.is_dir() else root
         shutil.copytree(
-            source_dir,
+            root,
             code_dir,
             ignore=shutil.ignore_patterns(
-                "models", "dist", "__pycache__", "*.pyc", ".venv", ".git", ".pytest_cache"
+                "models", "dist", "env", "docs", ".github",
+                "__pycache__", "*.pyc", ".venv", ".git", ".pytest_cache",
+                ".mypy_cache", ".ruff_cache", "node_modules", ".aireliable",
             ),
             dirs_exist_ok=True,
         )
@@ -684,10 +747,13 @@ def cmd_pack(args: argparse.Namespace) -> int:
 
         if archive.exists():
             archive.unlink()
-        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # 平台导入器只接受 7z 容器（.airengine 扩展名），与平台导出保持一致
+        import py7zr
+
+        with py7zr.SevenZipFile(archive, "w") as zf:
             for path in sorted(staging.rglob("*")):
                 if path.is_file():
-                    zf.write(path, path.relative_to(staging).as_posix())
+                    zf.writestr(path.read_bytes(), path.relative_to(staging).as_posix())
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

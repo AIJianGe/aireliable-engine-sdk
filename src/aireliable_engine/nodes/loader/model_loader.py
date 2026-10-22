@@ -33,10 +33,6 @@ v0.2.5 通用节点改造（U1-1）：
             reader = GGUFReader(str(model_path))
             return {"model": ..., "vae": ..., "clip": ..., "scheduler": ...}
 
-参考：
-    - v0.2-analysis.md §11.2 / §4.2
-    - PR/architecture.md §12.2.5（节点 yaml 示例）/ §18.4（组件拼装式加载）/ §20.22（架构类型与目录映射）
-    - PR/development-guide.md §28.4（节点契约）/ §28.18.5（架构类型联动目录规范）
     - v0.2.5-loader-architecture-analysis.md
 """
 

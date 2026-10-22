@@ -53,7 +53,6 @@
     voices = await client.list_voices()
 
 设计依据：
-    - PR/architecture.md §3.18.8：UI 音色库浏览推荐用 SDK 调用
     - project-rules.md §第三部分 §1：环境变量注入规范
     - 参考 task_reporter.py 的单例 + 容错 + 异步模式
 

@@ -19,9 +19,6 @@ v0.2.5 通用节点改造（U1-5）：
 将 Sampler 输出的 Latent 解码为像素空间 Images。
 输出为 Images 包装类（验收标准要求），下游 ImageSave 节点消费。
 
-参考：
-    - PR/architecture.md §12.2 / §12.4（工作流示例）
-    - PR/development-guide.md §28.5（数据类型规范）
     - v0.2-tasks.md 任务 3.7
     - v0.2.5-universal-nodes-analysis.md §五（5）
 """

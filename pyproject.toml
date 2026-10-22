@@ -40,6 +40,7 @@ dependencies = [
     "pillow",                           # Images 数据类依赖
     "numpy>=1.24.0",                    # Audio.samples / Image.from_array 数据类型
     "huggingface_hub>=0.25.0",          # 通用下载器组件
+    "py7zr>=0.21.0",                    # pack 输出 .airengine（7z）包
 ]
 
 # 引擎开发者按需选装：pip install "aireliable-engine-sdk[image]"

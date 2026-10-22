@@ -245,7 +245,7 @@ class TestCustomEngineStateMachine:
 
     @pytest.mark.asyncio
     async def test_concurrent_loads_are_serialized(self):
-        """并发 load：op_lock 串行化，第二个会因状态机防护失败。"""
+        """并发 load：op_lock 串行化，第二个在 READY 上先 unload 再 load，两者都成功。"""
         eng = _CompleteCustomEngine()
 
         original_load = eng._load_impl
@@ -263,10 +263,8 @@ class TestCustomEngineStateMachine:
             try_load(), try_load(), return_exceptions=True
         )
 
-        successes = [r for r in results if not isinstance(r, Exception)]
-        errors = [r for r in results if isinstance(r, Exception)]
-        assert len(successes) == 1
-        assert len(errors) == 1
+        assert all(not isinstance(r, Exception) for r in results), results
+        assert eng.state_machine.state == RuntimeState.READY
 
 
 class TestCustomEngineLora:

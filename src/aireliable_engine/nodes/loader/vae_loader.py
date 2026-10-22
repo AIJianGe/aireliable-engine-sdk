@@ -15,9 +15,6 @@ v0.2.5 通用节点改造（U1-2）：
     - source="shared"：从 models/shared/vae/ 加载（跨引擎复用，如 sdxl-vae / flux-vae）
     - source="engine_specific"：从引擎专属目录加载
 
-参考：
-    - PR/architecture.md §3.6（models/shared/vae/ 目录）
-    - PR/development-guide.md §28（节点规范）
     - v0.2-tasks.md 任务 3.4
     - v0.2.5-universal-nodes-analysis.md §五（2）
 """

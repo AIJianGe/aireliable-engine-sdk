@@ -4,9 +4,6 @@
 
 设计参考：
     - v0.2-tasks.md 任务 4.5
-    - v0.2-analysis.md §12
-    - PR/architecture.md §12.4 工作流 graph 结构
-    - PR/development-guide.md §29 工作流 yaml 规范
 
 校验规则：
     1. 顶层结构：name / description / nodes / outputs / branches
@@ -91,7 +88,6 @@ class NodeDef(BaseModel):
         pos: 画布坐标 [x, y]（可选，仅 UI 持久化用）。
         params: 节点参数字典（key=参数名，value=任意 JSON 兼容值）。
         inputs: 输入连接字典（key=端口名，value=引用字符串或字面值）。
-            引用格式详见 PR/development-guide.md §29.3：
                 - ``node_id.output.port`` → 引用上游节点输出
                 - ``${variant}`` / ``${inputs.field}`` / ``${loras}`` → 变量注入
                 - 非 str 类型 → 字面值传递

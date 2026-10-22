@@ -7,7 +7,6 @@
 - 心跳帧格式正确（`: heartbeat\\n\\n`）
 - 数据帧格式正确（`data: {json}\\n\\n`）
 
-详见 architecture.md §3.8 SSE 心跳机制、development-guide.md §28.21 子规则 1。
 """
 
 from __future__ import annotations

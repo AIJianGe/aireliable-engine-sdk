@@ -54,6 +54,20 @@ class _MockModel:
         self.fuse_lora_calls.append({"lora_scale": lora_scale})
 
 
+class _MockLegacyModel:
+    """老版 Pipeline：只有 fuse_lora，没有 set_adapters。"""
+
+    def __init__(self) -> None:
+        self.load_lora_weights_calls: list[Path] = []
+        self.fuse_lora_calls: list[dict] = []
+
+    def load_lora_weights(self, path: str, **kwargs) -> None:
+        self.load_lora_weights_calls.append(Path(path))
+
+    def fuse_lora(self, lora_scale: float = 1.0) -> None:
+        self.fuse_lora_calls.append({"lora_scale": lora_scale})
+
+
 class _MockBareModel:
     """不具备 load_lora_weights 的模型对象。"""
 
@@ -302,7 +316,7 @@ class TestLoRALoaderExecute:
         lora_path = models_root / "shared" / "lora" / "test.safetensors"
         lora_path.parent.mkdir(parents=True)
         lora_path.touch()
-        mock_model = _MockModel(supports_set_adapters=False)
+        mock_model = _MockLegacyModel()
 
         node = LoRALoaderNode({
             "lora_name": "test",
@@ -312,9 +326,7 @@ class TestLoRALoaderExecute:
         ctx = make_default_context(models_root=models_root)
         await node.execute({"model": mock_model}, ctx)
 
-        # 不应调用 set_adapters
-        assert len(mock_model.set_adapters_calls) == 0
-        # 应调用 fuse_lora
+        # 老版 Pipeline 无 set_adapters，应回退调用 fuse_lora
         assert len(mock_model.fuse_lora_calls) == 1
         assert mock_model.fuse_lora_calls[0]["lora_scale"] == 0.5
 

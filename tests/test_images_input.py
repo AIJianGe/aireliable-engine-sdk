@@ -12,7 +12,6 @@ accept_roles 5 个 advanced 参数，本测试文件同步删除相关测试用�
     - ctx.inputs 注入
     - 错误处理
 
-参考：v0.2-analysis.md §5.2.3 / PR/architecture.md §12.2.4
 """
 
 from __future__ import annotations

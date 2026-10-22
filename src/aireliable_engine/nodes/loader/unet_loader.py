@@ -18,8 +18,6 @@ ComfyUI 风格的组件分离加载节点，与 ModelLoader（一体化加载）
 
 参考：
     - v0.2.5-comfyui-nodes-analysis.md §二（1）
-    - PR/architecture.md §20.19.10（ComfyUI 风格节点补充）
-    - PR/development-guide.md §28.17.1（UNetLoader 节点规范）
 """
 
 from __future__ import annotations

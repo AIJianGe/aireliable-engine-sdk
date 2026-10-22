@@ -14,7 +14,6 @@ v0.2.5 简化：
     - 优先级
     - 空值处理
 
-参考：v0.2-analysis.md §5.2 / PR/architecture.md §12.2
 """
 
 from __future__ import annotations

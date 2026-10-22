@@ -7,10 +7,6 @@
     - 处理 if/else 分支（condition）
     - 收集 outputs 返回
 
-参考：
-    - v0.2-analysis.md §12
-    - PR/architecture.md §12.5
-    - PR/development-guide.md §29
 """
 
 from __future__ import annotations

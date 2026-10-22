@@ -18,9 +18,7 @@ v0.2.5 P0-H3 增强：
     - 节点定义镜像前端格式（与 src-tauri/ui/workflow_editor/node_definitions.js 一致）
 
 参考文档：
-    - v0.2-analysis.md §14.7 节点包生态
     - v0.2-tasks.md 任务 12.2
-    - PR/development-guide.md §32 节点包发布规范
 """
 
 from __future__ import annotations

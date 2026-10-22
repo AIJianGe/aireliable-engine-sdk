@@ -21,9 +21,7 @@
     - 所有错误返回 JSON：{"error": {"type": "...", "message": "..."}}
 
 参考文档：
-    - v0.2-analysis.md §13 工作流管理 API
     - v0.2-tasks.md 任务 12.1
-    - PR/architecture.md §12.8 工作流可视化
 """
 
 from __future__ import annotations

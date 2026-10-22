@@ -6,8 +6,6 @@
 
 参考：
     - v0.2-tasks.md 任务 4.5
-    - PR/architecture.md §12.4 工作流 graph 结构
-    - PR/development-guide.md §29 工作流 yaml 规范
 """
 
 from __future__ import annotations
@@ -73,7 +71,6 @@ def basic_workflow_yaml(basic_workflow_dict) -> str:
 
 @pytest.fixture
 def ernie_image_workflow_yaml() -> str:
-    """ERNIE-Image 完整工作流示例（来自 PR/architecture.md §12.4.1）。"""
     return """
 name: ernie_image_default
 description: ERNIE-Image 默认文生图工作流

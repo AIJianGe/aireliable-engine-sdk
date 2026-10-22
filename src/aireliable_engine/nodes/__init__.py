@@ -1,6 +1,5 @@
 """平台基础节点库（v0.2 + v0.2.5 通用节点改造）。
 
-按 v0.2-analysis.md §11.2 / PR/architecture.md §12.2 组织：
 
     input/           输入节点（数据接入）
         ImagesInput          - 多图输入（variadic，v0.2 核心）

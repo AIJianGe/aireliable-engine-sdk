@@ -1,9 +1,6 @@
 """AIReliable 条件 DSL（安全子集）。
 
 设计参考：
-    - v0.2-analysis.md §6（if/else 安全 DSL 设计）
-    - PR/architecture.md §12.6（条件 DSL 安全子集）
-    - PR/development-guide.md §29.5（条件 DSL 语法规范）
 
 核心特性：
     1. **安全**：不调用 Python eval / exec / __import__，全部 AST 自实现求值

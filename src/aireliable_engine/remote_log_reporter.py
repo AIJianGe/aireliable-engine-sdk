@@ -33,7 +33,6 @@
 
 参考：
     - unified-log-platform-analysis.md §5.4 远程引擎日志
-    - core/src/core/server.py::ingest_logs  (POST /logs/ingest)
     - gateway/src/gateway/log_handler.py  (类似的批量上报实现)
 """
 

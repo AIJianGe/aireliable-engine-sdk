@@ -11,9 +11,6 @@ v0.2.5 简化：
     - API 调用时可通过 ctx.inputs["value"] 或 InferRequest.inputs["value"] 注入
     - 输出：text (str)
 
-参考：
-    - v0.2-analysis.md §5.2 / §11.2
-    - PR/architecture.md §12.2 / §28.5
 """
 
 from __future__ import annotations

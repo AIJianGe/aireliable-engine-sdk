@@ -14,9 +14,6 @@ v0.2.5 通用节点改造（U1-4）：
     - execute 流程（参数校验 → 进度上报 → 调用 _sample_impl → 回调进度）
     - 默认 _sample_impl 实现（pipeline/components 双架构）
 
-参考：
-    - PR/architecture.md §12.2 / §12.2.6（节点示例）
-    - PR/development-guide.md §28.5（数据类型规范）
     - v0.2-tasks.md 任务 3.6
     - v0.2.5-universal-nodes-analysis.md §五（4）
 """

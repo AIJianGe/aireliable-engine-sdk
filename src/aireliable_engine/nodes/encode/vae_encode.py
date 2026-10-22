@@ -18,9 +18,6 @@
     | 输出       | LATENT (tensor)        | latent (Latent 类型)       |
     | 批量支持   | 支持 (tensor batch)    | 支持 (Images 长度=N)       |
 
-参考：
-    - PR/architecture.md §3.6（models/shared/vae/ 目录）
-    - PR/development-guide.md §28（节点规范）
     - v0.2.5-vae-encode-analysis.md §四（节点设计）
     - VAEDecodeNode（对称实现，decode/vae_decode.py）
 """

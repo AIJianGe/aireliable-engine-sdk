@@ -52,23 +52,37 @@ class SSEStream:
             return
         await self._queue.put(frame)
 
-    def put_threadsafe(self, frame: dict[str, Any]) -> None:
-        """子线程写入帧（用于 diffusers callback）。
+    def _put_nowait(self, frame: dict[str, Any] | None) -> None:
+        """把帧投递到队列：同线程直接入队以保序，异线程经事件循环投递。"""
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is self._loop:
+            # 已在本事件循环线程：直接入队，避免延迟到下一轮事件循环
+            # （否则先入队的进度帧会排到后续 workflow 帧之后，顺序错乱）
+            self._queue.put_nowait(frame)
+        else:
+            self._loop.call_soon_threadsafe(self._queue.put_nowait, frame)
 
-        通过 run_coroutine_threadsafe 跨线程提交到事件循环。
-        """
+    def put_threadsafe(self, frame: dict[str, Any]) -> None:
+        """写入帧，可在子线程或事件循环线程调用（如 diffusers callback）。"""
         if self._closed:
             return
-        # run_coroutine_threadsafe 把协程提交到指定事件循环
-        asyncio.run_coroutine_threadsafe(self._queue.put(frame), self._loop)
+        self._put_nowait(frame)
 
     def close(self) -> None:
         """关闭流，发送结束信号。"""
         if self._closed:
             return
         self._closed = True
-        # 放入 None 作为哨兵，让 events() 迭代器退出
-        asyncio.run_coroutine_threadsafe(self._queue.put(None), self._loop)
+        # 哨兵必须排在已提交的跨线程帧之后：统一走 call_soon_threadsafe，
+        # 与 put_threadsafe 的异线程路径保持 FIFO。
+        try:
+            self._loop.call_soon_threadsafe(self._queue.put_nowait, None)
+        except RuntimeError:
+            # 事件循环已关闭：直接入队，保证 events() 不会永久阻塞
+            self._queue.put_nowait(None)
 
     async def events(self) -> AsyncIterator[str]:
         """异步迭代器：产出 SSE 格式的字符串帧。

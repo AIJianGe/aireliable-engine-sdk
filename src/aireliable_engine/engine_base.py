@@ -160,7 +160,6 @@ class BaseEngine(ABC):
         Raises:
             AttributeError: 子类未设置 ``output_root``
 
-        规范详见 PR/architecture.md §3.7 输出文件存储规范。
         """
         if self.output_root is None:
             raise AttributeError(
@@ -493,7 +492,6 @@ class BaseEngine(ABC):
             vram_required/available/model_file_ids/missing_file_ids）；
             平台不可达时返回 None（调用方应 fallback 到本地扫描）
 
-        规范详见 PR/architecture.md §3.29 模型检测架构统一（方案 B）。
         """
         core_url = self._get_platform_core_url()
         if not core_url:

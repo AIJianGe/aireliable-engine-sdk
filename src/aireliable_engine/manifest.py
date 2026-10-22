@@ -168,13 +168,11 @@ _PARADIGMS = {"workflow", "integrated"}
 _SOURCE_TYPES = {"github", "local", "registry"}
 
 # ===========================================================================
-# v0.2.1 模型分类规范化常量（PR/architecture.md §16）
 # ===========================================================================
 
 # 13 类顶层目录（用于 target_dir / model_layout.base / lora.scan_dir 校验）
 # 任务 64（Schema 治理）：新增 `audio` —— 与 HF「音频任务独立成族」一致，
 # 用于音效 / 视频转音频（V2A/Foley）等非语音类引擎（如 foleycrafter）。
-# 详见 PR/architecture.md §3.6 / docs/docs/appendix/file-paths.md
 # 注意：本常量在 engine_scaffolder.py / model_placement_checker.py 另有副本，须同改。
 _MODEL_TOP_LEVEL_DIRS = frozenset({
     "shared", "image", "video", "voice", "audio", "llm", "multimodal",
@@ -182,7 +180,6 @@ _MODEL_TOP_LEVEL_DIRS = frozenset({
     "restoration", "misc",
 })
 
-# model_files[].role 枚举（16 项，详见 PR/architecture.md §16.3 / §18.2）
 # v0.2.3 新增（ERNIE-Image 改造）：pe / scheduler / text_encoder
 _MODEL_FILE_ROLE_VALUES = frozenset({
     "main", "mmproj", "vae", "clip", "t5", "clip_vision",
@@ -464,8 +461,6 @@ class NodePackageDep(BaseModel):
 # v0.2.1 模型分类规范化（manifest.models 块）
 #
 # 设计参考：
-#   - PR/architecture.md §16.4 manifest.models 块（Pydantic schema）
-#   - PR/development-guide.md §5.4-§5.5 模型文件预检与位置检测
 #   - docs/docs/appendix/model-classification.md 枚举值清单
 #   - docs/docs/appendix/model-placement-rules.md 位置放置规则
 #
@@ -1127,7 +1122,6 @@ class ModelsBlockSchema(BaseModel):
     v0.2.1 起 manifest.yaml 必填 models 块（schema 层 Optional 兼容旧 manifest，
     EngineImporter 导入时强制必填）。
 
-    详见 PR/architecture.md §16.4。
 
     Attributes:
         model_layout: 模型目录布局（必填，含 base / lora / controlnet 等）。
@@ -1240,7 +1234,6 @@ class ModelsBlockSchema(BaseModel):
 class CpuOffloadLevelSchema(BaseModel):
     """单个 CPU offload 等级的声明（v0.4.x+ 引入）。
 
-    详见 PR/development-guide.md §37.2.1 CpuOffloadSchema 设计。
 
     Attributes:
         name: 等级显示名（如 "全 GPU"）。
@@ -1261,7 +1254,6 @@ class CpuOffloadSchema(BaseModel):
     实现"显存不够内存补"：GPU 显存不足时，将不活跃的模型层临时存放在
     系统内存（RAM），需要计算时再搬入 GPU。
 
-    详见 PR/development-guide.md §37.2.1。
 
     Attributes:
         supported: 该引擎是否支持 CPU offload。
@@ -1288,7 +1280,6 @@ class EnvConfigSchema(BaseModel):
         6. CPU offload 等级支持（cpu_offload，v0.4.x+ 新增）
 
     详见 engine-env-settings-analysis.md §3.2 manifest 扩展设计
-        和 PR/development-guide.md §37.2.1。
 
     Attributes:
         requires_torch: 引擎是否依赖 torch。
@@ -1329,7 +1320,6 @@ class EnvConfigSchema(BaseModel):
     # True 时 core 显存预检失败可自动降级 gpu+cpu 混合模式启动
     # （llama-server -ngl auto --fit on 按实际显存自动分配 GPU/CPU 层数）。
     # 未声明（False）的引擎维持硬门禁（显存不足直接报错，避免 load 阶段 OOM）
-    # 详见 ANALYSIS-TASKS/LLAMACPP_VRAM_STARTUP_FAILURE_ANALYSIS.md
     supports_device_policy: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -1933,9 +1923,6 @@ def is_v021_manifest(schema: ManifestSchema) -> bool:
     Returns:
         True 表示是 v0.2.1 格式（含 models 块），False 表示是 v0.1/v0.2 格式。
 
-    详见：
-        - PR/architecture.md §16.4 manifest.models 块
-        - PR/development-guide.md §5.4-§5.5 模型文件预检与位置检测
     """
     return schema.models is not None
 
@@ -1949,8 +1936,5 @@ def validate_v021_manifest_strict(schema: ManifestSchema) -> None:
     Raises:
         ManifestSchemaError: 严格校验失败（含所有错误列表）。
 
-    详见：
-        - PR/architecture.md §16.4 字段强制策略
-        - PR/development-guide.md §5.4 模型文件预检规范
     """
     schema.validate_v021_strict()

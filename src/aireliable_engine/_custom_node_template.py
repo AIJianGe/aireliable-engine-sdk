@@ -31,8 +31,6 @@ params_schema 编写规范（v0.2.5 P0-H1）：
 
 参考：
     - v0.2.5-workflow-editor-nodes-analysis.md §4 节点定义规范
-    - PR/architecture.md §20.13 自定义节点扩展机制
-    - PR/development-guide.md §28.x 自定义节点开发规范
 """
 
 from __future__ import annotations

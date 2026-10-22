@@ -23,8 +23,6 @@ ctx.extra 集成：
 
 参考：
     - v0.2.5-comfyui-nodes-analysis.md §二（3）
-    - PR/architecture.md §20.19.10（ComfyUI 风格节点补充）
-    - PR/development-guide.md §28.17.3（ModelSamplingAuraFlow 节点规范）
 """
 
 from __future__ import annotations

@@ -6,7 +6,6 @@
 参考：
     - ComfyUI EmptyLatentImage 节点
     - v0.2.5-universal-nodes-analysis.md §六（1）
-    - PR/development-guide.md §28.16.3
 """
 
 from __future__ import annotations
