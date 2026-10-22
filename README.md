@@ -72,21 +72,32 @@ pip install git+https://github.com/AIJianGe/aireliable-engine-sdk.git@v0.3.0
 manifest_schema_version: "0.4"
 engine_id: my_engine
 engine_name: My Engine
-version: "1.0.0"
-capability: text-to-image
+engine_version: "1.0.0"
+aireliable_compat: ">=0.3.0"
+uv_env_name: "my-engine"
+export_mode: source
+
 paradigm: workflow
-engine_type: image
+engine_uid: "aireliable://your-name/misc/my_engine"
+sdk_version: ">=0.3.0"
+engine_api_version: "1"
 
 entry: my_engine.server          # 平台用 python -m my_engine.server --port N 启动
 
-variants:
-  - name: default
-    alias: Default
-    precision: fp16
-    loader: my_engine
-    model_file_ids: []
+license: "Apache-2.0"
+repository: "https://github.com/your-name/my_engine"
 
-model_files: []
+models:
+  model_layout:
+    base: "misc/my_engine/"
+  default_variant: default
+  variants:
+    - name: default
+      alias: "Default"
+      precision: fp32
+      path: "misc/my_engine/default"
+      model_file_ids: []
+  model_files: []
 ```
 
 > `entry` 为可选字段；缺省时平台回退 `engines.<engine_id>.server`（仅为兼容旧引擎）。
