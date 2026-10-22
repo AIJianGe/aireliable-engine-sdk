@@ -2,25 +2,25 @@
 
 引擎开发工具包，提供：
     - BaseEngine：8 端点契约的引擎抽象基类（**内部基类，引擎不应直接继承**）
-    - WorkflowEngine：工作流引擎基类（**v0.2.5+ 唯一支持的引擎基类**）
+    - WorkflowEngine：工作流引擎基类（**推荐**，声明式 yaml 编排）
+    - CustomEngine：全自定义引擎基类（固定流程 / 封装式推理）
     - BaseNode + PortSpec：节点抽象
     - NodeRegistry：节点注册表 + entry points 自动发现
     - WorkflowExecutor + workflow_dsl：工作流执行器 + 安全条件 DSL
     - schemas / SSEStream / StateMachine：8 端点契约配套
     - Images / Image / Audio / Video / Latent / Tensor：节点数据类型
     - 平台基础节点库（ImagesInput / TextInput / ModelLoader / ...）
+    - manifest：manifest.yaml 结构模型（SDK 与平台共用的单一真相源）
+    - package：引擎包布局与规范化内容哈希（pack / 导入校验共用）
 
-v0.2.5 变更：
-    - 移除 integrated / custom 范式，统一为 workflow 范式
-    - 所有引擎必须继承 WorkflowEngine（直接继承 BaseEngine 触发 DeprecationWarning）
-    - WorkflowEngine 子类只需实现 _build_workflow + _capabilities_impl 两个方法
+范式说明：
+    - WorkflowEngine 与 CustomEngine 均为一等公民，按引擎形态选择；
+    - BaseEngine 是内部基类，引擎不应直接继承（会触发 DeprecationWarning）；
+    - WorkflowEngine 子类只需实现 _build_workflow + _capabilities_impl 两个方法。
 
 v0.2.9 新增 engine_id 三同名契约（强制）：
     - engine_id 必须匹配正则 `^[a-z][a-z0-9_]{1,63}$`（小写字母+数字+下划线，禁止连字符）
     - 三同名契约：目录名 = engine_id = Python 模块名，三者必须字符完全相同
-    - 详见 PR/development-guide.md §17.5 命名约定 + §四十 创建引擎前检测规范
-    - 配套架构：PR/architecture.md §3.26 engine_id 三同名契约架构
-    - 配套需求：PR/requirements.md §二十七 engine_id 命名规范需求
 
 安装：
     pip install aireliable-engine-sdk            # 最小核心
@@ -270,6 +270,21 @@ from .voice_library_client import (
     close_voice_library_client,
     get_voice_library_client,
 )
+# 任务 68：manifest 结构契约与引擎包工具（SDK / 平台共用）
+from .manifest import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSchema,
+    ManifestSchemaError,
+    PackageInfo,
+    validate_manifest_dict,
+    validate_manifest_yaml,
+)
+from .package import (
+    compute_content_hash,
+    missing_required,
+    read_package_json,
+    write_package_json,
+)
 
 __version__ = "0.3.0"
 
@@ -457,4 +472,15 @@ __all__ = [
     "VoiceLibraryClientError",
     "get_voice_library_client",
     "close_voice_library_client",
+    # ===== manifest 契约与引擎包工具（任务 68）=====
+    "CURRENT_MANIFEST_SCHEMA_VERSION",
+    "ManifestSchema",
+    "ManifestSchemaError",
+    "PackageInfo",
+    "validate_manifest_dict",
+    "validate_manifest_yaml",
+    "compute_content_hash",
+    "missing_required",
+    "read_package_json",
+    "write_package_json",
 ]

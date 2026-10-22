@@ -1,0 +1,33 @@
+AIReliable Engine SDK
+Copyright 2026 AIReliable Team
+
+This product includes software developed by the AIReliable Team.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+--------------------------------------------------------------------------------
+第三方依赖说明
+
+本 SDK 在运行时依赖以下第三方包（由使用方自行安装，本仓库不分发其源码）：
+
+  - pydantic            MIT
+  - fastapi             MIT
+  - uvicorn             BSD-3-Clause
+  - pyyaml              MIT
+  - httpx               BSD-3-Clause
+  - pillow              HPND
+  - numpy               BSD-3-Clause
+  - huggingface_hub     Apache-2.0
+
+可选依赖（image / video / voice / llm / gradio 等 extras）遵循各自上游许可证。
+本 SDK 不内联、不修改上述依赖的源代码。

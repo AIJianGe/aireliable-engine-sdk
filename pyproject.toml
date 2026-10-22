@@ -1,7 +1,7 @@
 # AIReliable Engine SDK
 # 独立 PyPI 包：aireliable-engine-sdk
-# 引擎开发者通过 `pip install aireliable-engine-sdk` 即可开发可插拔引擎。
-# 详见 v0.2-analysis.md §11 / PR/development-guide.md §31。
+# 引擎开发者通过 `pip install aireliable-engine-sdk` 即可开发可插拔引擎，无需平台源码。
+# 文档见 README.md 与 docs/。
 
 [project]
 name = "aireliable-engine-sdk"
@@ -21,6 +21,14 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Topic :: Software Development :: Libraries",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AIJianGe/aireliable-engine-sdk"
+Repository = "https://github.com/AIJianGe/aireliable-engine-sdk"
+Issues = "https://github.com/AIJianGe/aireliable-engine-sdk/issues"
+
+[project.scripts]
+aireliable-engine = "aireliable_engine.cli:main"
 
 # SDK 自身依赖（平台层最小集合，引擎运行依赖在引擎 envs/<env>/pyproject.toml 声明）
 dependencies = [
