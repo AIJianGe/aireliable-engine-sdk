@@ -244,10 +244,11 @@ def collect_validation(root: Path, *, strict: bool = False) -> dict[str, Any]:
         warnings.append("manifest.repository 未声明（分发时建议填写）")
 
     # 7. 大文件 / 模型权重
+    # 体积过大只是风险提示：引擎可以合法内置 ffmpeg 等二进制工具。
     for path in oversized_files(root):
-        errors.append(
-            f"文件过大（>{MAX_FILE_BYTES // (1024 * 1024)}MB）："
-            f"{path.relative_to(root).as_posix()}（模型权重应放平台 models/ 目录）"
+        warnings.append(
+            f"文件较大（>{MAX_FILE_BYTES // (1024 * 1024)}MB）："
+            f"{path.relative_to(root).as_posix()}（若非模型权重可忽略）"
         )
     for path in model_weight_files(root):
         errors.append(
