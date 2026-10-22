@@ -36,9 +36,13 @@ pip install "aireliable-engine-sdk[gradio]"   # 需要自带 Web UI 时
 pip install "aireliable-engine-sdk[dev]"
 ```
 
-未发布到 PyPI 的过渡方式：
+尚未发布到 PyPI，当前用 GitHub Release 安装：
 
 ```bash
+# 直接装 Release 里的 wheel
+pip install https://github.com/AIJianGe/aireliable-engine-sdk/releases/download/v0.3.0/aireliable_engine_sdk-0.3.0-py3-none-any.whl
+
+# 或从标签源码安装
 pip install git+https://github.com/AIJianGe/aireliable-engine-sdk.git@v0.3.0
 ```
 

@@ -17,14 +17,14 @@
 
 | 文档 | 内容 | 行数 |
 |---|---|---|
-| `README.md`（仓根） | 安装、最小引擎、CLI 四命令 | 165 |
+| `README.md`（仓根） | 安装、最小引擎、CLI 四命令 | 168 |
 | [manifest.md](manifest.md) | `manifest.yaml` 全字段与校验规则 | 140 |
 | [http-contract.md](http-contract.md) | 8 端点契约、SSE、错误格式、版本握手 | 158 |
 | [workflow.md](workflow.md) | 工作流 YAML、节点、条件 DSL、自定义节点 | 115 |
 | [package.md](package.md) | 包布局、`pack`、哈希、导入与来源记录 | 86 |
 | [faq.md](faq.md) | 常见报错与排查 | 59 |
 
-合计 **723 行**（非空行口径），满足 5+1 篇 ≤ 800 行的预算。
+合计 **726 行**（非空行口径），满足 5+1 篇 ≤ 800 行的预算。
 
 ## 约定
 
