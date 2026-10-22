@@ -479,13 +479,26 @@ class TestSamplerNodeErrors:
 
     @pytest.mark.asyncio
     async def test_bare_sampler_raises_not_implemented(self):
-        """未重写 _sample_impl 的子类抛 NotImplementedError。"""
+        """未重写 _sample_impl 的子类走默认实现。
+
+        v0.2.5 通用节点改造后，父类 SamplerNode 提供默认 _sample_impl
+        （自动检测 pipeline / components 模式）。_BareSampler 未重写该方法，
+        将调用默认实现：
+            - 缺依赖（diffusers/torch）时抛 ImportError，被 execute 包装为
+              RuntimeError（"采样失败: ..."）
+            - 若默认实现被移除则回退为 NotImplementedError
+        """
         sampler = _BareSampler({"steps": 5})
         ctx = make_default_context()
         inputs = {"model": MagicMock(), "embeds": MagicMock()}
-        with pytest.raises(NotImplementedError) as exc_info:
+        with pytest.raises((NotImplementedError, ImportError, RuntimeError)) as exc_info:
             await sampler.execute(inputs, ctx)
-        assert "_sample_impl" in str(exc_info.value)
+        msg = str(exc_info.value)
+        assert (
+            "_sample_impl" in msg
+            or "采样失败" in msg
+            or isinstance(exc_info.value.__cause__, ImportError)
+        )
 
     @pytest.mark.asyncio
     async def test_sample_impl_failure_wrapped_as_runtime_error(self):

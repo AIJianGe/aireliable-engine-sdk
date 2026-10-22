@@ -669,6 +669,19 @@ class WorkflowExecutor:
             DSLError: DSL 求值错误
             NodeNotFoundError: 节点类型未注册
         """
+        # v0.2.5+ T6.1：用 log_context 包裹整个执行，让所有节点日志自动带 task_id
+        # contextvars 保证 asyncio 任务间隔离，不影响其他并发推理
+        from .log_context import log_context
+
+        with log_context(task_id=ctx.task_id):
+            return await self._execute_inner(inputs, ctx)
+
+    async def _execute_inner(
+        self,
+        inputs: dict[str, Any],
+        ctx: WorkflowContext,
+    ) -> dict[str, Any]:
+        """execute 的实际实现（已包裹在 log_context 中）。"""
         # 1. 构建 graph + 拓扑排序
         graph = self._build_graph()
         order = self._topological_sort(graph)

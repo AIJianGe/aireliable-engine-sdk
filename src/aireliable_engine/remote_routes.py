@@ -41,8 +41,10 @@ from .node_routes import NodeRouter, create_node_router
 from .schemas import (
     HealthResponse,
     LoadRequest,
+    LoadResponse,
     LoraLoadRequest,
     LoraUnloadRequest,
+    UnloadResponse,
 )
 from .workflow_engine import WorkflowEngine
 from .workflow_routes import WorkflowRouter, create_workflow_router
@@ -247,8 +249,13 @@ def _register_standard_endpoints(app: FastAPI, engine: BaseEngine) -> None:
 
     与 engines/<engine>/server.py 中的 _register_endpoints 等价，
     但以注入方式而非全局 get_engine() 方式工作。
+
+    v0.2.5+ T6.2：额外注册 /log_level 端点（GET 查询 + POST 动态调整）。
     """
     from .schemas import ErrorResponse
+    # v0.2.5+ T6.2：注册日志级别动态调整端点
+    from .logging_config import register_log_level_endpoint
+    register_log_level_endpoint(app)
 
     @app.get("/health", response_model=HealthResponse, tags=["engine"])
     async def health() -> HealthResponse:
@@ -266,8 +273,31 @@ def _register_standard_endpoints(app: FastAPI, engine: BaseEngine) -> None:
 
     @app.post("/load", tags=["engine"])
     async def load(request: LoadRequest) -> dict:
-        """加载 variant 到显存。"""
+        """加载 variant 到显存（v0.2.5+ 幂等）。
+
+        幂等规则（详见 PR/architecture.md §3.12）：
+            - 已加载同 variant → 直接返回 success（不重复加载）
+            - 已加载不同 variant → 先卸载旧模型再加载新模型
+            - 未加载 → 正常加载
+        """
         try:
+            # 幂等检查：查询当前状态
+            try:
+                status = await engine.status()
+                if status.loaded_variant == request.variant and status.state == "ready":
+                    logger.info(
+                        "幂等命中：variant=%s 已加载，跳过重复加载",
+                        request.variant,
+                    )
+                    return LoadResponse(
+                        variant=request.variant,
+                        state="ready",
+                        vram_used=status.vram_used,
+                        load_time=0.0,
+                    ).model_dump()
+            except Exception as e:
+                logger.debug("幂等检查查询状态失败，继续正常加载: %s", e)
+
             response = await engine.load(request)
             return response.model_dump()
         except FileNotFoundError as e:
@@ -280,8 +310,25 @@ def _register_standard_endpoints(app: FastAPI, engine: BaseEngine) -> None:
 
     @app.post("/unload", tags=["engine"])
     async def unload() -> dict:
-        """卸载模型。"""
+        """卸载模型（v0.2.5+ 幂等）。
+
+        幂等规则（详见 PR/architecture.md §3.12）：
+            - 已卸载（无模型加载）→ 直接返回 success
+            - 已加载 → 正常卸载
+        """
         try:
+            # 幂等检查：查询当前状态
+            try:
+                status = await engine.status()
+                if status.loaded_variant is None or status.state == "idle":
+                    logger.info("幂等命中：无模型加载，跳过卸载")
+                    return UnloadResponse(
+                        state="idle",
+                        vram_freed="0GB",
+                    ).model_dump()
+            except Exception as e:
+                logger.debug("幂等检查查询状态失败，继续正常卸载: %s", e)
+
             response = await engine.unload()
             return response.model_dump()
         except Exception as e:

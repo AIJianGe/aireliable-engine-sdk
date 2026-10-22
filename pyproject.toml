@@ -5,7 +5,7 @@
 
 [project]
 name = "aireliable-engine-sdk"
-version = "0.2.0"
+version = "0.3.0"
 description = "AIReliable Engine SDK - 开发可插拔引擎的工具包"
 readme = "README.md"
 requires-python = ">=3.10,<3.12"

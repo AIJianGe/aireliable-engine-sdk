@@ -261,6 +261,25 @@ class _IntegrationEngine(WorkflowEngine):
             supported_sizes=["1024x1024", "768x768"],
         )
 
+    def _get_default_workflow_template(self) -> str:
+        """测试用默认工作流模板（v0.2.5 L6 抽象方法实现）。"""
+        return """# 集成测试用默认工作流模板
+workflow:
+  name: default
+  description: Integration test default workflow
+  nodes:
+    - id: input_prompt
+      type: TextInput
+      pos: [100, 100]
+      params:
+        field: prompt
+    - id: image_out
+      type: ImageSave
+      pos: [400, 100]
+      inputs:
+        images: input_prompt
+"""
+
 
 # ===========================================================================
 # 工具函数

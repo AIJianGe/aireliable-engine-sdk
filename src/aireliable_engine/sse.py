@@ -2,6 +2,18 @@
 
 用途：把引擎内部进度事件（加载、反量化、推理步）转成 SSE 帧推给客户端。
 被 /infer 端点使用，diffusers 的 callback 在子线程触发，需要跨线程传消息。
+
+设计说明（v0.2.5+）：
+    SSEStream 为**单订阅者**模型，每次 /infer 请求创建一个独立 stream，
+    请求结束即关闭。适用于推理进度的点对点推送。
+
+    若需**多订阅者共享同一数据源**（如日志平台：多个 SSE 客户端订阅同一来源日志），
+    请使用 `aireliable_engine.log_manager.SSELogSubscriber`：
+        - 单 `LogBuffer` 持有多个 `SSELogSubscriber`
+        - `LogBuffer.append()` 自动 publish 到所有订阅者
+        - 订阅者通过 `subscribe()` / `unsubscribe()` 动态加入/退出
+
+    两者均产出 `data: {json}\\n\\n` 格式的 SSE 帧，可被相同的 StreamingResponse 消费。
 """
 
 from __future__ import annotations

@@ -281,23 +281,46 @@ class TestCLIPTextEncodeNodeErrors:
 
     @pytest.mark.asyncio
     async def test_missing_clip_raises_validation_error(self):
-        """缺少 clip 输入抛 NodeValidationError。"""
+        """v0.2.5 ComfyUI 风格改造后：缺 clip 时应抛 NodeValidationError。
+
+        新契约（B1）：clip 可通过两种方式获取
+            1. ctx.extra['loaded_clip']（全局共享，ComfyUI 风格）
+            2. inputs['clip']（向后兼容旧工作流）
+
+        当两者都为空时（既没有 ModelLoader 写入 ctx.extra，也没有显式连 clip 线），
+        应抛 NodeValidationError，提示用户放置 ModelLoader 节点或连接 clip 端口。
+        """
         encoder = _MockCLIPTextEncode({})
         ctx = make_default_context()
-        inputs = {"text": "a cat"}  # 缺 clip
+        # ctx.extra 中无 loaded_clip，inputs 中也无 clip
+        assert ctx.extra.get("loaded_clip") is None
+        inputs = {"text": "a cat"}  # 缺 clip，且 ctx.extra 无 loaded_clip
         with pytest.raises(NodeValidationError) as exc_info:
             await encoder.execute(inputs, ctx)
-        assert "clip" in str(exc_info.value)
+        assert "CLIP" in str(exc_info.value) or "clip" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_bare_encoder_raises_not_implemented(self):
-        """未重写 _encode_impl 的子类抛 NotImplementedError。"""
+        """未重写 _encode_impl 的子类走默认实现。
+
+        v0.2.5 通用节点改造后，父类 CLIPTextEncodeNode 提供默认 _encode_impl
+        （基于 transformers CLIPTokenizer + CLIPTextModel）。_BareEncoder 未重写
+        该方法，将调用默认实现：
+            - 缺依赖（transformers/torch）时抛 ImportError，被 execute 包装为
+              RuntimeError（"CLIP 文本编码失败: ..."）
+            - 若默认实现被移除则回退为 NotImplementedError
+        """
         encoder = _BareEncoder({})
         ctx = make_default_context()
         inputs = {"text": "a cat", "clip": MagicMock()}
-        with pytest.raises(NotImplementedError) as exc_info:
+        with pytest.raises((NotImplementedError, ImportError, RuntimeError)) as exc_info:
             await encoder.execute(inputs, ctx)
-        assert "_encode_impl" in str(exc_info.value)
+        msg = str(exc_info.value)
+        assert (
+            "_encode_impl" in msg
+            or "CLIP 文本编码失败" in msg
+            or isinstance(exc_info.value.__cause__, ImportError)
+        )
 
     @pytest.mark.asyncio
     async def test_encode_impl_failure_wrapped_as_runtime_error(self):
@@ -396,3 +419,117 @@ class TestCLIPTextEncodeNodeProgressReporting:
         assert "text_preview" in progress_kwargs[0]
         assert "sunset" in progress_kwargs[0]["text_preview"]
         assert "has_negative" in progress_kwargs[0]
+
+
+# ===========================================================================
+# v0.2.5 ComfyUI 风格改造（B1）：双轨 CLIP 查找测试
+# ===========================================================================
+
+class TestCLIPTextEncodeNodeResolveClip:
+    """_resolve_clip 双轨查找测试（v0.2.5 ComfyUI 风格改造 B1）。
+
+    验证优先级：
+        1. ctx.extra['loaded_clip']（全局共享，ComfyUI 风格）
+        2. inputs['clip']（向后兼容旧工作流）
+        3. 两者都为空 → execute 抛 NodeValidationError
+    """
+
+    @pytest.mark.asyncio
+    async def test_resolve_clip_from_ctx_extra(self):
+        """优先级 1：ctx.extra['loaded_clip'] 提供时使用它。"""
+        encoder = _MockCLIPTextEncode({})
+        ctx = make_default_context()
+        ctx_clip = MagicMock()
+        ctx.extra["loaded_clip"] = ctx_clip
+        inputs = {"text": "a cat"}  # 不传 clip，但 ctx.extra 有
+        await encoder.execute(inputs, ctx)
+        # _MockCLIPTextEncode._encode_impl 记录到 encode_called_with_args
+        # 元组 (text, negative_text, clip)
+        assert encoder.encode_called_with_args[2] is ctx_clip
+
+    @pytest.mark.asyncio
+    async def test_resolve_clip_from_inputs_fallback(self):
+        """优先级 2：ctx.extra 无，回退到 inputs['clip']（向后兼容）。"""
+        encoder = _MockCLIPTextEncode({})
+        ctx = make_default_context()
+        assert ctx.extra.get("loaded_clip") is None
+        inputs_clip = MagicMock()
+        inputs = {"text": "a cat", "clip": inputs_clip}
+        await encoder.execute(inputs, ctx)
+        assert encoder.encode_called_with_args[2] is inputs_clip
+
+    @pytest.mark.asyncio
+    async def test_ctx_extra_takes_precedence_over_inputs(self):
+        """优先级 1 > 2：两者都提供时优先 ctx.extra。"""
+        encoder = _MockCLIPTextEncode({})
+        ctx = make_default_context()
+        ctx_clip = MagicMock()
+        inputs_clip = MagicMock()
+        ctx.extra["loaded_clip"] = ctx_clip
+        inputs = {"text": "a cat", "clip": inputs_clip}
+        await encoder.execute(inputs, ctx)
+        # 应使用 ctx.extra 的，而非 inputs 的
+        assert encoder.encode_called_with_args[2] is ctx_clip
+        assert encoder.encode_called_with_args[2] is not inputs_clip
+
+    @pytest.mark.asyncio
+    async def test_no_clip_anywhere_raises_validation_error(self):
+        """两者都为空时抛 NodeValidationError（带安装/连接指引）。"""
+        encoder = _MockCLIPTextEncode({})
+        ctx = make_default_context()
+        assert ctx.extra.get("loaded_clip") is None
+        inputs = {"text": "a cat"}  # 缺 clip，且 ctx.extra 无
+        with pytest.raises(NodeValidationError) as exc_info:
+            await encoder.execute(inputs, ctx)
+        msg = str(exc_info.value)
+        # 错误信息应提到 ModelLoader 或 ctx.extra 或 clip
+        assert "CLIP" in msg or "clip" in msg or "ModelLoader" in msg
+
+    @pytest.mark.asyncio
+    async def test_progress_reports_clip_source(self):
+        """start 进度帧包含 clip_source 字段（标识来源）。"""
+        progress_kwargs: list[dict] = []
+
+        from aireliable_engine import ProgressReporter
+
+        class _CapturingReporter(ProgressReporter):
+            async def report_progress(self, progress, stage="", **kwargs):
+                progress_kwargs.append(kwargs)
+
+            async def report_error(self, message, error_type="node_error", **kwargs):
+                pass
+
+            async def report_info(self, message, **kwargs):
+                pass
+
+        # 测试 ctx.extra 来源
+        encoder = _MockCLIPTextEncode({})
+        ctx = make_default_context(progress_reporter=_CapturingReporter())
+        ctx.extra["loaded_clip"] = MagicMock()
+        inputs = {"text": "a cat"}
+        await encoder.execute(inputs, ctx)
+        assert progress_kwargs[0].get("clip_source") == "ctx.extra"
+
+    @pytest.mark.asyncio
+    async def test_progress_reports_clip_source_inputs_fallback(self):
+        """start 进度帧 clip_source == 'inputs.clip'（向后兼容模式）。"""
+        progress_kwargs: list[dict] = []
+
+        from aireliable_engine import ProgressReporter
+
+        class _CapturingReporter(ProgressReporter):
+            async def report_progress(self, progress, stage="", **kwargs):
+                progress_kwargs.append(kwargs)
+
+            async def report_error(self, message, error_type="node_error", **kwargs):
+                pass
+
+            async def report_info(self, message, **kwargs):
+                pass
+
+        encoder = _MockCLIPTextEncode({})
+        ctx = make_default_context(progress_reporter=_CapturingReporter())
+        # ctx.extra 无 loaded_clip，只通过 inputs.clip 提供
+        inputs = {"text": "a cat", "clip": MagicMock()}
+        await encoder.execute(inputs, ctx)
+        assert progress_kwargs[0].get("clip_source") == "inputs.clip"

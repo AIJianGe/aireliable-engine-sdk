@@ -154,6 +154,10 @@ class WorkflowEngine(BaseEngine):
         default_workflow: str = "default",
         node_registry: Optional[NodeRegistry] = None,
         progress_reporter: Optional[ProgressReporter] = None,
+        # v0.2.1 新增：models_root 注入（决策 H：Optional + 文档化覆盖契约）
+        # 子类应从 EngineConfig.models_root 注入（由调度层 CoreConfig.models_root 决定）
+        # 为 None 时 fallback 到 Path("models/")（向后兼容旧引擎）
+        models_root: Optional[Path] = None,
     ) -> None:
         super().__init__(
             engine_id=engine_id,
@@ -172,6 +176,13 @@ class WorkflowEngine(BaseEngine):
 
         # 进度上报器（可选，子类可注入；为 None 时 _infer_impl 内部构造）
         self._progress_reporter: Optional[ProgressReporter] = progress_reporter
+
+        # v0.2.1：models_root（决策 H：Optional + 文档化覆盖契约）
+        # - 子类从 EngineConfig.models_root 注入
+        # - EngineConfig.models_root 由调度层 CoreConfig.models_root → 子进程环境变量 AIRELIABLE_MODELS_ROOT
+        # - 为 None 时 fallback 到 Path("models/")（向后兼容旧 v0.1/v0.2 引擎）
+        # 详见 PR/architecture.md §16.7 双源真相消除 + §16.6 manifest.yaml 落地路径
+        self.models_root: Path = models_root if models_root is not None else Path("models/")
 
         # 运行态记录
         self.loaded_variant: Optional[str] = None
@@ -206,6 +217,53 @@ class WorkflowEngine(BaseEngine):
             实现可使用 self._read_workflow_file(name) 简化文件读取。
             热重载支持由 _read_workflow_file 自动处理（检查 mtime）。
         """
+
+    @abstractmethod
+    def _get_default_workflow_template(self) -> str:
+        """返回最小可运行的默认工作流 yaml 模板（v0.2.5 节点体系增强 L6）。
+
+        子类必须实现：返回一个包含该引擎核心节点（如 ModelLoader + TextInput
+        + Sampler + ImageSave）的最小工作流 yaml 字符串，供 _ensure_default_workflow()
+        在首次启动时创建 default.yaml。
+
+        模板要求：
+            - 仅包含引擎必备节点（最少 3-4 个）
+            - 节点间连线已正确配置
+            - params 使用合理默认值
+            - yaml 注释说明用途
+
+        Returns:
+            默认工作流 yaml 文本（UTF-8 编码字符串）。
+        """
+
+    def _ensure_default_workflow(self) -> None:
+        """确保 workflows_dir 中存在 default.yaml（v0.2.5 节点体系增强 L5）。
+
+        若 default.yaml 不存在，从 _get_default_workflow_template() 模板创建。
+        若 workflows_dir 未设置，则跳过（子类自行管理路径）。
+        首次运行时自动创建 workflows_dir 目录。
+
+        Note:
+            - 应在引擎 __init__ 末尾调用（workflows_dir 已就绪后）
+            - 仅在文件不存在时创建，不覆盖已有文件
+            - 创建后记录 info 日志
+        """
+        if self.workflows_dir is None:
+            logger.debug("_ensure_default_workflow: workflows_dir 未设置，跳过")
+            return
+
+        default_path = self.workflows_dir / f"{self.default_workflow}.yaml"
+        if default_path.exists():
+            logger.debug("_ensure_default_workflow: default.yaml 已存在: %s", default_path)
+            return
+
+        try:
+            self.workflows_dir.mkdir(parents=True, exist_ok=True)
+            template = self._get_default_workflow_template()
+            default_path.write_text(template, encoding="utf-8")
+            logger.info("已创建默认工作流：%s", default_path)
+        except Exception as e:
+            logger.warning("创建默认工作流失败：%s（不影响引擎启动）", e)
 
     def _read_workflow_file(self, name: Optional[str] = None) -> str:
         """从 workflows_dir 读取工作流 yaml 文件（支持热重载）。
@@ -467,7 +525,9 @@ class WorkflowEngine(BaseEngine):
             engine_id=self.engine_id,
             variant=request.variant,
             device="cpu",  # 子类应在 _infer_impl 之前设置 self.device 或重写
-            models_root=Path("models/"),  # 子类应覆盖
+            # v0.2.1：models_root 从 self.models_root 读取（由 __init__ 注入）
+            # 子类应通过 super().__init__(models_root=config.models_root) 注入
+            models_root=self.models_root,
             task_id=request.task_id or "",
             progress_reporter=progress_reporter,
             cancel_event=cancel_event,

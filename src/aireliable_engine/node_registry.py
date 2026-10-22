@@ -118,6 +118,9 @@ class NodeRegistry:
         self._nodes: dict[str, Type["BaseNode"]] = {}
         self._lock = threading.RLock()
         self._discovered: bool = False  # 是否已执行过 discover_plugins
+        # v0.2.5 P0-H3：加载失败的节点记录（key=节点标识，value=错误信息 dict）
+        # 供 GET /nodes?include_errors=true 返回，前端可显示红色标记 + 错误 tooltip
+        self._load_errors: dict[str, dict] = {}
 
     # ===== 实例方法 =====
 
@@ -239,6 +242,50 @@ class NodeRegistry:
         with self._lock:
             self._nodes.clear()
             self._discovered = False
+            self._load_errors.clear()
+
+    # ===== v0.2.5 P0-H3：加载错误跟踪 =====
+
+    def record_load_error(
+        self,
+        node_identifier: str,
+        error: str,
+        *,
+        source: str = "unknown",
+        module: Optional[str] = None,
+    ) -> None:
+        """记录节点加载失败（供 GET /nodes?include_errors=true 返回）。
+
+        Args:
+            node_identifier: 节点标识（entry point name / 文件名 / 类名等）。
+            error: 错误信息（异常字符串）。
+            source: 错误来源（"entry_point" / "local_dir" / "register" 等）。
+            module: 节点模块路径（如 "my_custom_nodes.style_transfer"）。
+        """
+        with self._lock:
+            self._load_errors[node_identifier] = {
+                "error": str(error),
+                "source": source,
+                "module": module,
+            }
+            logger.warning(
+                "节点加载失败: %s (source=%s, module=%s): %s",
+                node_identifier, source, module, error,
+            )
+
+    def list_errors(self) -> dict[str, dict]:
+        """列出所有加载失败的节点记录。
+
+        Returns:
+            节点标识 → 错误信息 dict 的副本。
+        """
+        with self._lock:
+            return dict(self._load_errors)
+
+    def clear_errors(self) -> None:
+        """清空加载错误记录。"""
+        with self._lock:
+            self._load_errors.clear()
 
     def contains(self, node_type: str) -> bool:
         """检查节点类型是否已注册。"""
@@ -313,27 +360,34 @@ class NodeRegistry:
             try:
                 node_cls = ep.load()
             except Exception as e:
-                logger.warning(
-                    "加载 entry point %s=%s 失败: %s",
-                    ep.name, ep.value, e,
+                # v0.2.5 P0-H3：记录加载失败的 entry point
+                self.record_load_error(
+                    ep.name,
+                    f"加载 entry point 失败: {e}",
+                    source="entry_point",
+                    module=ep.value,
                 )
                 continue
 
             # 校验是 BaseNode 子类
             from .node import BaseNode
             if not (isinstance(node_cls, type) and issubclass(node_cls, BaseNode)):
-                logger.warning(
-                    "entry point %s 加载的对象不是 BaseNode 子类: %r",
-                    ep.name, node_cls,
+                self.record_load_error(
+                    ep.name,
+                    f"加载的对象不是 BaseNode 子类: {node_cls!r}",
+                    source="entry_point",
+                    module=ep.value,
                 )
                 continue
 
             # 用类属性 node_type 作为注册 key
             node_type = getattr(node_cls, "node_type", "")
             if not node_type:
-                logger.warning(
-                    "entry point %s 的节点类 %s 缺少 node_type 属性，跳过",
-                    ep.name, node_cls.__name__,
+                self.record_load_error(
+                    ep.name,
+                    f"节点类 {node_cls.__name__} 缺少 node_type 属性",
+                    source="entry_point",
+                    module=ep.value,
                 )
                 continue
 
@@ -355,9 +409,11 @@ class NodeRegistry:
                         node_type, e.existing_cls.__name__, ep.name,
                     )
             except Exception as e:
-                logger.warning(
-                    "注册 entry point %s 失败: %s",
-                    ep.name, e,
+                self.record_load_error(
+                    ep.name,
+                    f"注册失败: {e}",
+                    source="entry_point",
+                    module=ep.value,
                 )
 
         if discovered:
@@ -367,6 +423,149 @@ class NodeRegistry:
             )
         else:
             logger.debug("entry points 未发现任何节点（group=%s）", group)
+
+        return discovered
+
+    # ===== v0.2.5 P0-J1：本地目录节点自动发现 =====
+
+    def discover_local_dir(
+        self,
+        directory,
+        *,
+        override: bool = False,
+        recursive: bool = True,
+    ) -> dict[str, Type["BaseNode"]]:
+        """扫描本地目录下的 .py 文件，发现并注册自定义节点。
+
+        v0.2.5 P0-J1：支持从引擎 custom_nodes/ 目录加载用户自定义节点。
+
+        扫描规则：
+            1. 递归扫描目录下所有 .py 文件（recursive=True 时含子目录）
+            2. 跳过以 _ 开头的文件（如 __init__.py、_template.py）
+            3. 用 importlib.util.spec_from_file_location 动态加载每个文件
+            4. 遍历模块中所有 BaseNode 子类并注册
+            5. 单个文件加载失败仅 record_load_error，不中断扫描
+
+        Args:
+            directory: 要扫描的目录路径（str / Path）。
+            override: 是否覆盖已注册节点（同名冲突时）。默认 False。
+            recursive: 是否递归扫描子目录。默认 True。
+
+        Returns:
+            本次扫描发现的节点字典 {node_type: node_cls}。
+        """
+        from pathlib import Path
+        from importlib.util import spec_from_file_location, module_from_spec
+
+        directory = Path(directory) if not isinstance(directory, Path) else directory
+        discovered: dict[str, Type["BaseNode"]] = {}
+
+        if not directory.exists():
+            logger.debug("discover_local_dir: 目录不存在 %s", directory)
+            return discovered
+        if not directory.is_dir():
+            logger.warning("discover_local_dir: %s 不是目录", directory)
+            return discovered
+
+        # 收集所有 .py 文件
+        if recursive:
+            py_files = sorted(directory.rglob("*.py"))
+        else:
+            py_files = sorted(directory.glob("*.py"))
+
+        # 过滤以 _ 开头的文件
+        py_files = [f for f in py_files if not f.name.startswith("_")]
+
+        if not py_files:
+            logger.debug("discover_local_dir: %s 下无 .py 节点文件", directory)
+            return discovered
+
+        # 延迟 import BaseNode
+        from .node import BaseNode
+
+        for py_file in py_files:
+            # 用唯一模块名避免冲突
+            module_name = f"_custom_node_{py_file.stem}_{abs(hash(str(py_file)))}"
+            try:
+                spec = spec_from_file_location(module_name, py_file)
+                if spec is None or spec.loader is None:
+                    self.record_load_error(
+                        py_file.name,
+                        "无法创建模块 spec（spec_from_file_location 返回 None）",
+                        source="local_dir",
+                        module=str(py_file),
+                    )
+                    continue
+
+                module = module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+            except Exception as e:
+                self.record_load_error(
+                    py_file.name,
+                    f"加载文件失败: {e}",
+                    source="local_dir",
+                    module=str(py_file),
+                )
+                continue
+
+            # 遍历模块中所有 BaseNode 子类
+            found_in_file = 0
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                # 必须是类 + BaseNode 子类 + 定义在当前模块中（非 import 进来的）
+                if not (isinstance(attr, type) and issubclass(attr, BaseNode)):
+                    continue
+                if attr.__module__ != module_name:
+                    continue  # 跳过 import 进来的基类
+                if attr is BaseNode:
+                    continue
+
+                node_type = getattr(attr, "node_type", "")
+                if not node_type:
+                    self.record_load_error(
+                        py_file.name,
+                        f"节点类 {attr.__name__} 缺少 node_type 属性",
+                        source="local_dir",
+                        module=str(py_file),
+                    )
+                    continue
+
+                try:
+                    self.register(node_type, attr, override=override)
+                    discovered[node_type] = attr
+                    found_in_file += 1
+                    logger.info(
+                        "发现自定义节点: %s → %s (file: %s)",
+                        node_type, attr.__name__, py_file.name,
+                    )
+                except NodeAlreadyRegisteredError as e:
+                    if override:
+                        pass
+                    else:
+                        logger.info(
+                            "节点 %s 已注册（%s），跳过 %s "
+                            "（override=True 可覆盖）",
+                            node_type, e.existing_cls.__name__, py_file.name,
+                        )
+                except Exception as e:
+                    self.record_load_error(
+                        py_file.name,
+                        f"注册失败: {e}",
+                        source="local_dir",
+                        module=str(py_file),
+                    )
+
+            if found_in_file == 0:
+                logger.debug("discover_local_dir: %s 中未发现节点类", py_file.name)
+
+        if discovered:
+            logger.info(
+                "本地目录发现完成：%s 下共 %d 个节点",
+                directory, len(discovered),
+            )
+        else:
+            logger.debug("本地目录未发现任何节点：%s", directory)
 
         return discovered
 

@@ -115,17 +115,61 @@ class _IncompleteEngine(BaseEngine):
 
 
 class TestBaseEngineAbstraction:
-    """BaseEngine 抽象基类测试。"""
+    """BaseEngine 抽象基类测试。
 
-    def test_cannot_instantiate_base_directly(self):
-        """BaseEngine 是 ABC，不能直接实例化。"""
-        with pytest.raises(TypeError):
-            BaseEngine("id", "name", "cap", "type")  # type: ignore[abstract]
+    v0.2.5+ 变更：
+        - BaseEngine 不再使用 @abstractmethod（7 个方法改为默认 NotImplementedError）
+        - 直接实例化 BaseEngine 不再抛 TypeError，但调用 _xxx_impl 会抛 NotImplementedError
+        - 直接继承 BaseEngine 会触发 DeprecationWarning
+    """
 
-    def test_incomplete_subclass_raises_typeerror(self):
-        """子类必须实现所有抽象方法，缺一个就 TypeError。"""
-        with pytest.raises(TypeError):
-            _IncompleteEngine("id", "name", "cap", "type")  # type: ignore[abstract]
+    def test_base_engine_unimplemented_methods_raise(self):
+        """v0.2.5+：BaseEngine 实例化后，未实现的 _xxx_impl 抛 NotImplementedError。"""
+        eng = BaseEngine("id", "name", "cap", "type")
+        # _capabilities_impl 默认抛 NotImplementedError
+        import asyncio
+
+        with pytest.raises(NotImplementedError):
+            asyncio.run(eng._capabilities_impl())
+        with pytest.raises(NotImplementedError):
+            asyncio.run(eng._load_impl("v1"))
+
+    def test_direct_subclass_triggers_deprecation_warning(self):
+        """v0.2.5+：直接继承 BaseEngine 触发 DeprecationWarning。"""
+
+        # 通过重新加载模块触发 __init_subclass__
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            class _DirectSubclass(BaseEngine):
+                pass
+
+            assert any(
+                issubclass(item.category, DeprecationWarning)
+                and "BaseEngine" in str(item.message)
+                for item in w
+            ), "直接继承 BaseEngine 应触发 DeprecationWarning"
+
+    def test_incomplete_subclass_can_instantiate_but_raises_on_call(self):
+        """v0.2.5+：未实现所有方法的子类可以实例化，但调用未实现的方法会抛 NotImplementedError。
+
+        _IncompleteEngine 只实现了 _capabilities_impl，其余 6 个方法继承
+        BaseEngine 的默认 NotImplementedError 实现。
+        """
+        eng = _IncompleteEngine("id", "name", "cap", "type")
+        import asyncio
+
+        # _capabilities_impl 已实现，不抛错
+        result = asyncio.run(eng._capabilities_impl())
+        assert result is None
+        # _load_impl 未实现，抛 NotImplementedError
+        with pytest.raises(NotImplementedError):
+            asyncio.run(eng._load_impl("v1"))
+        # _status_impl 未实现，抛 NotImplementedError
+        with pytest.raises(NotImplementedError):
+            asyncio.run(eng._status_impl())
 
     def test_complete_subclass_can_instantiate(self):
         """实现完整子类可正常实例化。"""

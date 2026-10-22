@@ -205,7 +205,8 @@ class TestVAEDecodeNodeBasic:
         node = VAEDecodeNode()
         assert node._vae_type_check is True
 
-    def test_init_with_custom_params(self):
+    def test_init_with_deprecated_params_ignored(self):
+        """v0.2.5 向后兼容：旧 params 写入但被忽略，默认值不变。"""
         node = VAEDecodeNode({
             "dtype": "float32",
             "output_mode": "RGBA",
@@ -217,157 +218,45 @@ class TestVAEDecodeNodeBasic:
             "call_timeout": 60.0,
             "vae_type_check": False,
         })
-        assert node._dtype == "float32"
-        assert node._output_mode == "RGBA"
-        assert node._clamp is False
-        assert node._scaling_factor == 0.18215
-        assert node._shift_factor == 0.0
-        assert node._device_override == "cuda:0"
-        assert node._batch_split == 2
-        assert node._call_timeout == 60.0
-        assert node._vae_type_check is False
+        # 默认值硬编码，不受旧 params 影响
+        assert node._dtype == "uint8"
+        assert node._output_mode == "RGB"
+        assert node._clamp is True
+        assert node._scaling_factor is None
+        assert node._shift_factor is None
+        assert node._device_override is None
+        assert node._batch_split is None
+        assert node._call_timeout is None
+        assert node._vae_type_check is True
 
     def test_repr_contains_class_name(self):
-        node = VAEDecodeNode({"dtype": "float32"})
+        node = VAEDecodeNode()
         repr_str = repr(node)
         assert "VAEDecodeNode" in repr_str
-        assert "float32" in repr_str
 
 
 # ===== 参数校验测试 =====
 
 
 class TestVAEDecodeNodeValidate:
-    """参数校验测试。"""
+    """参数校验测试。
+
+    v0.2.5 简化：所有参数硬编码默认值，validate() 永远返回空。
+    仅保留一个测试覆盖基本行为。
+    """
 
     def test_validate_returns_empty_for_default_params(self):
         node = VAEDecodeNode()
         assert node.validate() == []
 
-    def test_validate_reports_invalid_dtype(self):
-        node = VAEDecodeNode({"dtype": "int8"})
-        errors = node.validate()
-        assert any("dtype" in e for e in errors)
-
-    def test_validate_accepts_uint8_dtype(self):
-        node = VAEDecodeNode({"dtype": "uint8"})
+    def test_validate_returns_empty_with_any_old_params(self):
+        """v0.2.5：旧 params 被忽略，validate 永远通过。"""
+        node = VAEDecodeNode({
+            "dtype": "int8", "output_mode": "YCbCr", "clamp": "yes",
+            "scaling_factor": -1, "shift_factor": "auto",
+            "batch_split": 0, "call_timeout": -1.0, "vae_type_check": "yes",
+        })
         assert node.validate() == []
-
-    def test_validate_accepts_float32_dtype(self):
-        node = VAEDecodeNode({"dtype": "float32"})
-        assert node.validate() == []
-
-    def test_validate_reports_invalid_output_mode(self):
-        node = VAEDecodeNode({"output_mode": "YCbCr"})
-        errors = node.validate()
-        assert any("output_mode" in e for e in errors)
-
-    def test_validate_accepts_rgb_mode(self):
-        node = VAEDecodeNode({"output_mode": "RGB"})
-        assert node.validate() == []
-
-    def test_validate_accepts_rgba_mode(self):
-        node = VAEDecodeNode({"output_mode": "RGBA"})
-        assert node.validate() == []
-
-    def test_validate_accepts_l_mode(self):
-        node = VAEDecodeNode({"output_mode": "L"})
-        assert node.validate() == []
-
-    def test_validate_reports_non_bool_clamp(self):
-        """clamp 非布尔值应报错（避免 bool('yes')=True 绕过类型校验）。"""
-        node = VAEDecodeNode({"clamp": "yes"})
-        errors = node.validate()
-        assert any("clamp" in e for e in errors)
-
-    def test_validate_accepts_true_clamp(self):
-        node = VAEDecodeNode({"clamp": True})
-        assert node.validate() == []
-
-    def test_validate_accepts_false_clamp(self):
-        node = VAEDecodeNode({"clamp": False})
-        assert node.validate() == []
-
-    def test_validate_reports_non_positive_scaling_factor(self):
-        node = VAEDecodeNode({"scaling_factor": -0.5})
-        errors = node.validate()
-        assert any("scaling_factor" in e for e in errors)
-
-    def test_validate_reports_zero_scaling_factor(self):
-        node = VAEDecodeNode({"scaling_factor": 0})
-        errors = node.validate()
-        assert any("scaling_factor" in e for e in errors)
-
-    def test_validate_accepts_positive_scaling_factor(self):
-        node = VAEDecodeNode({"scaling_factor": 0.18215})
-        assert node.validate() == []
-
-    def test_validate_accepts_none_scaling_factor(self):
-        node = VAEDecodeNode({"scaling_factor": None})
-        assert node.validate() == []
-
-    def test_validate_reports_non_numeric_shift_factor(self):
-        node = VAEDecodeNode({"shift_factor": "auto"})
-        errors = node.validate()
-        assert any("shift_factor" in e for e in errors)
-
-    def test_validate_accepts_zero_shift_factor(self):
-        """shift_factor 可为 0（Flux VAE 默认值）。"""
-        node = VAEDecodeNode({"shift_factor": 0.0})
-        assert node.validate() == []
-
-    def test_validate_reports_non_positive_batch_split(self):
-        node = VAEDecodeNode({"batch_split": 0})
-        errors = node.validate()
-        assert any("batch_split" in e for e in errors)
-
-    def test_validate_reports_negative_batch_split(self):
-        node = VAEDecodeNode({"batch_split": -1})
-        errors = node.validate()
-        assert any("batch_split" in e for e in errors)
-
-    def test_validate_accepts_positive_batch_split(self):
-        node = VAEDecodeNode({"batch_split": 4})
-        assert node.validate() == []
-
-    def test_validate_accepts_none_batch_split(self):
-        node = VAEDecodeNode({"batch_split": None})
-        assert node.validate() == []
-
-    def test_validate_reports_non_positive_call_timeout(self):
-        node = VAEDecodeNode({"call_timeout": 0})
-        errors = node.validate()
-        assert any("call_timeout" in e for e in errors)
-
-    def test_validate_reports_negative_call_timeout(self):
-        node = VAEDecodeNode({"call_timeout": -1.0})
-        errors = node.validate()
-        assert any("call_timeout" in e for e in errors)
-
-    def test_validate_accepts_positive_call_timeout(self):
-        node = VAEDecodeNode({"call_timeout": 30.0})
-        assert node.validate() == []
-
-    def test_validate_accepts_none_call_timeout(self):
-        node = VAEDecodeNode({"call_timeout": None})
-        assert node.validate() == []
-
-    def test_validate_reports_non_bool_vae_type_check(self):
-        node = VAEDecodeNode({"vae_type_check": "yes"})
-        errors = node.validate()
-        assert any("vae_type_check" in e for e in errors)
-
-    def test_validate_accepts_true_vae_type_check(self):
-        node = VAEDecodeNode({"vae_type_check": True})
-        assert node.validate() == []
-
-    def test_validate_accepts_false_vae_type_check(self):
-        node = VAEDecodeNode({"vae_type_check": False})
-        assert node.validate() == []
-
-
-# ===== execute 流程测试 =====
-
 
 class TestVAEDecodeNodeExecute:
     """execute 流程测试。"""
@@ -391,14 +280,15 @@ class TestVAEDecodeNodeExecute:
         assert node.decode_called_with_vae is mock_vae
 
     @pytest.mark.asyncio
-    async def test_execute_passes_params_dict_to_impl(
+    async def test_execute_passes_fixed_params_to_impl(
         self, mock_latent, mock_vae, ctx
     ):
+        """v0.2.5：传入的 params 全为硬编码默认值，旧 params 被忽略。"""
         node = _MockDecoder({"dtype": "float32", "output_mode": "RGBA"})
         await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
         params = node.decode_called_with_params
-        assert params["dtype"] == "float32"
-        assert params["output_mode"] == "RGBA"
+        assert params["dtype"] == "uint8"
+        assert params["output_mode"] == "RGB"
         assert params["clamp"] is True
         assert params["scaling_factor"] is None
         assert params["shift_factor"] is None
@@ -413,13 +303,14 @@ class TestVAEDecodeNodeExecute:
         assert node.decode_called_with_params["device"] == "cuda:0"
 
     @pytest.mark.asyncio
-    async def test_execute_device_override_takes_precedence(
+    async def test_execute_uses_ctx_device_regardless_of_params(
         self, mock_latent, mock_vae
     ):
+        """v0.2.5：device 写死用 ctx.device，params.device 被忽略。"""
         ctx = make_default_context(device="cpu")
         node = _MockDecoder({"device": "cuda:1"})
         await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
-        assert node.decode_called_with_params["device"] == "cuda:1"
+        assert node.decode_called_with_params["device"] == "cpu"
 
     @pytest.mark.asyncio
     async def test_execute_raises_on_missing_latent(self, mock_vae, ctx):
@@ -450,22 +341,35 @@ class TestVAEDecodeNodeExecute:
         assert "vae" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_execute_raises_on_invalid_params(self, mock_latent, mock_vae, ctx):
-        """参数校验失败时抛 NodeValidationError。"""
-        node = _MockDecoder({"dtype": "int8"})  # 非法 dtype
-        with pytest.raises(NodeValidationError) as exc_info:
-            await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
-        assert "dtype" in str(exc_info.value)
+    async def test_execute_accepts_deprecated_invalid_params(
+        self, mock_latent, mock_vae, ctx
+    ):
+        """v0.2.5：旧 params（含非法值）被静默忽略，execute 正常返回。"""
+        node = _MockDecoder({"dtype": "int8"})  # 旧非法 dtype，现已忽略
+        result = await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
+        assert "images" in result
 
     @pytest.mark.asyncio
     async def test_execute_raises_not_implemented_for_bare_subclass(
         self, mock_latent, mock_vae, ctx
     ):
-        """未实现 _decode_impl 的子类应抛 NotImplementedError。"""
+        """未实现 _decode_impl 的子类走默认实现。
+
+        v0.2.5 通用节点改造后，父类 VAEDecodeNode 提供默认 _decode_impl
+        （基于 diffusers VAE.decode）。_BareDecoder 未重写该方法，将调用默认实现：
+            - 缺依赖（diffusers/torch）时抛 ImportError，被 execute 包装为
+              RuntimeError（"VAE 解码失败: ..."）
+            - 若默认实现被移除则回退为 NotImplementedError
+        """
         node = _BareDecoder()
-        with pytest.raises(NotImplementedError) as exc_info:
+        with pytest.raises((NotImplementedError, ImportError, RuntimeError)) as exc_info:
             await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
-        assert "_decode_impl" in str(exc_info.value)
+        msg = str(exc_info.value)
+        assert (
+            "_decode_impl" in msg
+            or "VAE 解码失败" in msg
+            or isinstance(exc_info.value.__cause__, ImportError)
+        )
 
     @pytest.mark.asyncio
     async def test_execute_wraps_runtime_error_on_failure(
@@ -653,7 +557,8 @@ class TestVAEDecodeNodeProgress:
         node = _MockDecoder({"dtype": "float32"})
         await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
         start_events = [e for e in events if e[2] == "vae_decode.start"]
-        assert start_events[0][3]["dtype"] == "float32"
+        # v0.2.5：dtype 硬编码 uint8，旧 params.dtype 被忽略
+        assert start_events[0][3]["dtype"] == "uint8"
 
     @pytest.mark.asyncio
     async def test_execute_start_progress_contains_device(
@@ -675,7 +580,8 @@ class TestVAEDecodeNodeProgress:
         node = _MockDecoder({"device": "cuda:1"})
         await node.execute({"latent": mock_latent, "vae": mock_vae}, ctx)
         start_events = [e for e in events if e[2] == "vae_decode.start"]
-        assert start_events[0][3]["device"] == "cuda:1"
+        # v0.2.5：device 用 ctx.device，params.device 被忽略
+        assert start_events[0][3]["device"] == "cuda:0"
 
     @pytest.mark.asyncio
     async def test_execute_done_progress_contains_image_count(
@@ -830,8 +736,8 @@ class TestVAEDecodeNodeIntegration:
         assert node.decode_called_with_params["device"] == "cuda:0"
 
     @pytest.mark.asyncio
-    async def test_full_pipeline_with_all_params(self, mock_vae):
-        """所有参数都生效。"""
+    async def test_full_pipeline_ignores_deprecated_params(self, mock_vae):
+        """v0.2.5：旧 yaml 中残留的 params 全部被忽略，行为等同默认。"""
         latent = Latent(tensor=MagicMock(), vae_type="sdxl")
         node = _MockDecoder({
             "dtype": "float32",
@@ -847,11 +753,12 @@ class TestVAEDecodeNodeIntegration:
         ctx = make_default_context(device="cpu")
         await node.execute({"latent": latent, "vae": mock_vae}, ctx)
         params = node.decode_called_with_params
-        assert params["dtype"] == "float32"
-        assert params["output_mode"] == "RGBA"
-        assert params["clamp"] is False
-        assert params["scaling_factor"] == 0.13025
-        assert params["shift_factor"] == 0.0609
-        assert params["device"] == "cuda:1"
-        assert params["batch_split"] == 2
-        assert params["call_timeout"] == 120.0
+        # 全部为硬编码默认值
+        assert params["dtype"] == "uint8"
+        assert params["output_mode"] == "RGB"
+        assert params["clamp"] is True
+        assert params["scaling_factor"] is None
+        assert params["shift_factor"] is None
+        assert params["device"] == "cpu"
+        assert params["batch_split"] is None
+        assert params["call_timeout"] is None

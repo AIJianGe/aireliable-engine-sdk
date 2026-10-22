@@ -1,9 +1,18 @@
-"""TextInput 节点单元测试。
+"""TextInput 节点单元测试（v0.2.5 简化版）。
 
-覆盖任务 3.2 验收标准：
-    - 从请求 inputs.<field> 读取
-    - 支持 required / optional
-    - required 字段缺失时报错
+v0.2.5 简化：
+    - 删除 field / required / default / strip / allow_empty 5 个参数
+    - 仅保留 value 一个参数
+    - 默认允许空格、允许空字符串（不做 strip）
+
+覆盖：
+    - 节点基本属性
+    - value 画布内直接编辑
+    - ctx.inputs 注入
+    - InferRequest 注入
+    - 类型转换
+    - 优先级
+    - 空值处理
 
 参考：v0.2-analysis.md §5.2 / PR/architecture.md §12.2
 """
@@ -13,7 +22,6 @@ from __future__ import annotations
 import pytest
 
 from aireliable_engine import InferRequest, make_default_context
-from aireliable_engine.node import NodeValidationError
 from aireliable_engine.nodes.input.text_input import TextInputNode
 
 
@@ -21,328 +29,226 @@ from aireliable_engine.nodes.input.text_input import TextInputNode
 
 
 class TestTextInputNodeBasic:
-    """TextInputNode 基本属性测试。"""
+    """TextInputNode 基本属性测试（v0.2.5 简化版）。"""
 
     def test_node_type_is_textinput(self):
-        node = TextInputNode({"field": "prompt"})
+        node = TextInputNode()
         assert node.node_type == "TextInput"
 
     def test_input_specs_is_empty_list(self):
-        node = TextInputNode({"field": "prompt"})
+        node = TextInputNode()
         assert node.input_specs == []
 
     def test_output_specs_has_text_port(self):
-        node = TextInputNode({"field": "prompt"})
+        node = TextInputNode()
         assert len(node.output_specs) == 1
         port = node.output_specs[0]
         assert port.name == "text"
         assert port.type == "text"
 
-    def test_default_required_is_true(self):
-        node = TextInputNode({"field": "prompt"})
-        assert node._required is True
+    def test_default_value_is_empty_string(self):
+        """v0.2.5 简化：默认 value 为空字符串。"""
+        node = TextInputNode()
+        assert node._value == ""
 
-    def test_default_strip_is_true(self):
-        node = TextInputNode({"field": "prompt"})
-        assert node._strip is True
+    def test_init_with_value(self):
+        """v0.2.5 简化：通过 value 参数初始化。"""
+        node = TextInputNode({"value": "hello world"})
+        assert node._value == "hello world"
 
-    def test_default_allow_empty_is_true(self):
-        node = TextInputNode({"field": "prompt"})
-        assert node._allow_empty is True
-
-    def test_default_default_is_none(self):
-        node = TextInputNode({"field": "prompt"})
-        assert node._default is None
-
-    def test_repr_contains_field_and_required(self):
-        node = TextInputNode({"field": "prompt", "required": False, "default": ""})
-        repr_str = repr(node)
-        assert "TextInputNode" in repr_str
-        assert "prompt" in repr_str
-        assert "False" in repr_str
-
-
-# ===== 参数校验测试 =====
-
-
-class TestTextInputNodeValidate:
-    """参数校验测试。"""
-
-    def test_validate_returns_empty_for_valid_params(self):
-        node = TextInputNode({"field": "prompt"})
+    def test_validate_returns_empty(self):
+        """v0.2.5 简化：validate 始终返回空列表（无强制校验）。"""
+        node = TextInputNode()
         assert node.validate() == []
 
-    def test_validate_reports_missing_field(self):
-        node = TextInputNode({})
-        errors = node.validate()
-        assert any("field" in e for e in errors)
+    def test_validate_returns_empty_with_empty_value(self):
+        """空 value 也通过校验（允许空字符串）。"""
+        node = TextInputNode({"value": ""})
+        assert node.validate() == []
 
-    def test_validate_reports_empty_field(self):
-        node = TextInputNode({"field": ""})
-        errors = node.validate()
-        assert any("field" in e for e in errors)
+    def test_repr_contains_value(self):
+        """v0.2.5 简化：repr 包含 value。"""
+        node = TextInputNode({"value": "test"})
+        repr_str = repr(node)
+        assert "TextInputNode" in repr_str
+        assert "test" in repr_str
 
-    def test_validate_reports_non_bool_required(self):
-        node = TextInputNode({"field": "prompt", "required": "yes"})
-        errors = node.validate()
-        assert any("required" in e for e in errors)
+    def test_params_schema_only_has_value(self):
+        """v0.2.5 简化：params_schema 仅包含 value 一个参数。"""
+        schema = TextInputNode.params_schema
+        assert list(schema.keys()) == ["value"]
+        assert schema["value"]["format"] == "inline-textarea"
 
 
-# ===== required 字段测试（验收标准）=====
+# ===== value 画布内编辑测试 =====
 
 
-class TestTextInputNodeRequired:
-    """required 字段测试（任务 3.2 验收标准）。"""
+class TestTextInputNodeValue:
+    """value 参数（画布内直接编辑）测试。"""
 
     @pytest.mark.asyncio
-    async def test_required_field_present_returns_value(self):
-        """required=True 且字段存在，返回值。"""
-        node = TextInputNode({"field": "prompt", "required": True})
-        ctx = make_default_context(inputs={"prompt": "a beautiful cat"})
+    async def test_value_returned_directly(self):
+        """params.value 直接作为输出。"""
+        node = TextInputNode({"value": "a beautiful cat"})
+        ctx = make_default_context(inputs={})
         result = await node.execute({}, ctx)
         assert result["text"] == "a beautiful cat"
 
     @pytest.mark.asyncio
-    async def test_required_field_missing_raises_error(self):
-        """required=True 且字段缺失，抛 NodeValidationError。"""
-        node = TextInputNode({"field": "prompt", "required": True})
-        ctx = make_default_context(inputs={})
-        with pytest.raises(NodeValidationError) as exc_info:
-            await node.execute({}, ctx)
-        assert "prompt" in str(exc_info.value)
-        assert "缺失" in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    async def test_required_field_none_raises_error(self):
-        """required=True 且字段值=None，抛 NodeValidationError。"""
-        node = TextInputNode({"field": "prompt", "required": True})
-        ctx = make_default_context(inputs={"prompt": None})
-        with pytest.raises(NodeValidationError) as exc_info:
-            await node.execute({}, ctx)
-        assert "None" in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    async def test_optional_field_missing_returns_default(self):
-        """required=False 且字段缺失，返回 default。"""
-        node = TextInputNode({
-            "field": "negative_prompt",
-            "required": False,
-            "default": "low quality",
-        })
-        ctx = make_default_context(inputs={})
-        result = await node.execute({}, ctx)
-        assert result["text"] == "low quality"
-
-    @pytest.mark.asyncio
-    async def test_optional_field_missing_default_none_returns_empty(self):
-        """required=False 且字段缺失，default=None 返回空字符串。"""
-        node = TextInputNode({
-            "field": "negative_prompt",
-            "required": False,
-            "default": None,
-        })
+    async def test_empty_value_returns_empty_string(self):
+        """空 value 返回空字符串。"""
+        node = TextInputNode({"value": ""})
         ctx = make_default_context(inputs={})
         result = await node.execute({}, ctx)
         assert result["text"] == ""
 
     @pytest.mark.asyncio
-    async def test_optional_field_present_returns_value(self):
-        """required=False 但字段存在，返回值（不使用 default）。"""
-        node = TextInputNode({
-            "field": "negative_prompt",
-            "required": False,
-            "default": "fallback",
-        })
-        ctx = make_default_context(inputs={"negative_prompt": "blurry"})
+    async def test_value_with_whitespace_preserved(self):
+        """v0.2.5 简化：不做 strip，保留空格。"""
+        node = TextInputNode({"value": "  hello world  "})
+        ctx = make_default_context(inputs={})
         result = await node.execute({}, ctx)
-        assert result["text"] == "blurry"
-
-
-# ===== 类型转换测试 =====
-
-
-class TestTextInputNodeTypeConversion:
-    """类型转换测试。"""
+        assert result["text"] == "  hello world  "
 
     @pytest.mark.asyncio
-    async def test_int_value_converted_to_str(self):
-        node = TextInputNode({"field": "steps"})
-        ctx = make_default_context(inputs={"steps": 30})
+    async def test_value_with_newlines_preserved(self):
+        """v0.2.5 简化：保留换行符。"""
+        node = TextInputNode({"value": "line1\nline2\nline3"})
+        ctx = make_default_context(inputs={})
+        result = await node.execute({}, ctx)
+        assert result["text"] == "line1\nline2\nline3"
+
+    @pytest.mark.asyncio
+    async def test_value_takes_priority_over_ctx_inputs(self):
+        """params.value 优先级高于 ctx.inputs["value"]。"""
+        node = TextInputNode({"value": "from params"})
+        ctx = make_default_context(inputs={"value": "from ctx"})
+        result = await node.execute({}, ctx)
+        assert result["text"] == "from params"
+
+
+# ===== ctx.inputs 注入测试 =====
+
+
+class TestTextInputNodeCtxInputs:
+    """ctx.inputs 注入测试（API 调用场景）。"""
+
+    @pytest.mark.asyncio
+    async def test_ctx_inputs_value_when_params_value_empty(self):
+        """params.value 为空时，从 ctx.inputs["value"] 读取。"""
+        node = TextInputNode({"value": ""})
+        ctx = make_default_context(inputs={"value": "from ctx"})
+        result = await node.execute({}, ctx)
+        assert result["text"] == "from ctx"
+
+    @pytest.mark.asyncio
+    async def test_ctx_inputs_string_value(self):
+        """ctx.inputs 注入字符串。"""
+        node = TextInputNode()
+        ctx = make_default_context(inputs={"value": "hello world"})
+        result = await node.execute({}, ctx)
+        assert result["text"] == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_ctx_inputs_int_converted_to_str(self):
+        """ctx.inputs 注入 int，自动转 str。"""
+        node = TextInputNode()
+        ctx = make_default_context(inputs={"value": 30})
         result = await node.execute({}, ctx)
         assert result["text"] == "30"
 
     @pytest.mark.asyncio
-    async def test_float_value_converted_to_str(self):
-        node = TextInputNode({"field": "guidance"})
-        ctx = make_default_context(inputs={"guidance": 7.5})
+    async def test_ctx_inputs_float_converted_to_str(self):
+        """ctx.inputs 注入 float，自动转 str。"""
+        node = TextInputNode()
+        ctx = make_default_context(inputs={"value": 7.5})
         result = await node.execute({}, ctx)
         assert result["text"] == "7.5"
 
     @pytest.mark.asyncio
-    async def test_bool_true_converted_to_str(self):
-        node = TextInputNode({"field": "enhance"})
-        ctx = make_default_context(inputs={"enhance": True})
+    async def test_ctx_inputs_bool_true_converted_to_str(self):
+        """ctx.inputs 注入 bool True，转为 "true"。"""
+        node = TextInputNode()
+        ctx = make_default_context(inputs={"value": True})
         result = await node.execute({}, ctx)
         assert result["text"] == "true"
 
     @pytest.mark.asyncio
-    async def test_bool_false_converted_to_str(self):
-        node = TextInputNode({"field": "enhance"})
-        ctx = make_default_context(inputs={"enhance": False})
+    async def test_ctx_inputs_bool_false_converted_to_str(self):
+        """ctx.inputs 注入 bool False，转为 "false"。"""
+        node = TextInputNode()
+        ctx = make_default_context(inputs={"value": False})
         result = await node.execute({}, ctx)
         assert result["text"] == "false"
 
     @pytest.mark.asyncio
-    async def test_list_value_joined_with_space(self):
-        node = TextInputNode({"field": "tags"})
-        ctx = make_default_context(inputs={"tags": ["cat", "cute", "fluffy"]})
+    async def test_ctx_inputs_list_joined_with_space(self):
+        """ctx.inputs 注入 list，用空格 join。"""
+        node = TextInputNode()
+        ctx = make_default_context(inputs={"value": ["cat", "cute", "fluffy"]})
         result = await node.execute({}, ctx)
         assert result["text"] == "cat cute fluffy"
 
-    @pytest.mark.asyncio
-    async def test_str_value_passed_through(self):
-        node = TextInputNode({"field": "prompt"})
-        ctx = make_default_context(inputs={"prompt": "hello world"})
-        result = await node.execute({}, ctx)
-        assert result["text"] == "hello world"
 
-
-# ===== strip / allow_empty 测试 =====
-
-
-class TestTextInputNodeStripAndEmpty:
-    """strip 和 allow_empty 测试。"""
-
-    @pytest.mark.asyncio
-    async def test_strip_removes_whitespace(self):
-        node = TextInputNode({"field": "prompt", "strip": True})
-        ctx = make_default_context(inputs={"prompt": "  hello world  "})
-        result = await node.execute({}, ctx)
-        assert result["text"] == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_strip_disabled_preserves_whitespace(self):
-        node = TextInputNode({"field": "prompt", "strip": False})
-        ctx = make_default_context(inputs={"prompt": "  hello  "})
-        result = await node.execute({}, ctx)
-        assert result["text"] == "  hello  "
-
-    @pytest.mark.asyncio
-    async def test_allow_empty_false_raises_on_empty(self):
-        """allow_empty=False 且字段为空字符串，抛错。"""
-        node = TextInputNode({
-            "field": "prompt",
-            "required": True,
-            "allow_empty": False,
-        })
-        ctx = make_default_context(inputs={"prompt": ""})
-        with pytest.raises(NodeValidationError) as exc_info:
-            await node.execute({}, ctx)
-        assert "不允许为空" in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    async def test_allow_empty_false_raises_on_whitespace_only(self):
-        """strip=True + allow_empty=False + 仅空白字符 → 抛错。"""
-        node = TextInputNode({
-            "field": "prompt",
-            "required": True,
-            "allow_empty": False,
-            "strip": True,
-        })
-        ctx = make_default_context(inputs={"prompt": "   "})
-        with pytest.raises(NodeValidationError):
-            await node.execute({}, ctx)
-
-    @pytest.mark.asyncio
-    async def test_allow_empty_true_accepts_empty(self):
-        """allow_empty=True 允许空字符串通过。"""
-        node = TextInputNode({
-            "field": "prompt",
-            "required": True,
-            "allow_empty": True,
-        })
-        ctx = make_default_context(inputs={"prompt": ""})
-        result = await node.execute({}, ctx)
-        assert result["text"] == ""
-
-
-# ===== InferRequest 传递测试 =====
+# ===== InferRequest 注入测试 =====
 
 
 class TestTextInputNodeInferRequest:
-    """通过完整 InferRequest 传递的测试。"""
+    """InferRequest 注入测试。"""
 
     @pytest.mark.asyncio
     async def test_read_from_infer_request_inputs(self):
-        """从 InferRequest.inputs 读取字段。"""
-        node = TextInputNode({"field": "prompt"})
+        """params.value 为空时，从 InferRequest.inputs["value"] 读取。"""
+        node = TextInputNode({"value": ""})
         request = InferRequest(
             variant="flux",
-            inputs={"prompt": "a cat sitting on a chair"},
+            inputs={"value": "from request"},
         )
         ctx = make_default_context(extra={"__infer_request__": request})
         result = await node.execute({}, ctx)
-        assert result["text"] == "a cat sitting on a chair"
+        assert result["text"] == "from request"
 
     @pytest.mark.asyncio
     async def test_ctx_inputs_takes_priority_over_infer_request(self):
-        """ctx.inputs 优先级高于 InferRequest.inputs。"""
-        node = TextInputNode({"field": "prompt"})
+        """ctx.inputs["value"] 优先级高于 InferRequest.inputs["value"]。"""
+        node = TextInputNode({"value": ""})
         request = InferRequest(
             variant="flux",
-            inputs={"prompt": "from request"},
+            inputs={"value": "from request"},
         )
         ctx = make_default_context(
-            inputs={"prompt": "from ctx"},
+            inputs={"value": "from ctx"},
             extra={"__infer_request__": request},
         )
         result = await node.execute({}, ctx)
         assert result["text"] == "from ctx"
 
     @pytest.mark.asyncio
-    async def test_infer_request_fallback_when_ctx_inputs_empty(self):
-        """ctx.inputs 为空时回退到 InferRequest.inputs。"""
-        node = TextInputNode({"field": "negative_prompt"})
+    async def test_params_value_takes_priority_over_everything(self):
+        """params.value 优先级最高（高于 ctx.inputs 和 InferRequest）。"""
+        node = TextInputNode({"value": "from params"})
         request = InferRequest(
             variant="flux",
-            inputs={"prompt": "a cat", "negative_prompt": "blurry"},
+            inputs={"value": "from request"},
         )
-        ctx = make_default_context(extra={"__infer_request__": request})
+        ctx = make_default_context(
+            inputs={"value": "from ctx"},
+            extra={"__infer_request__": request},
+        )
         result = await node.execute({}, ctx)
-        assert result["text"] == "blurry"
+        assert result["text"] == "from params"
 
     @pytest.mark.asyncio
-    async def test_infer_request_field_missing_raises_when_required(self):
-        """InferRequest.inputs 中字段缺失且 required=True，抛错。"""
-        node = TextInputNode({"field": "nonexistent_field", "required": True})
-        request = InferRequest(variant="flux", inputs={"prompt": "a cat"})
-        ctx = make_default_context(extra={"__infer_request__": request})
-        with pytest.raises(NodeValidationError):
-            await node.execute({}, ctx)
-
-
-# ===== 错误处理测试 =====
-
-
-class TestTextInputNodeErrors:
-    """错误处理测试。"""
-
-    @pytest.mark.asyncio
-    async def test_missing_field_param_raises_validation_error(self):
-        """params 未指定 field，execute 抛 NodeValidationError。"""
-        node = TextInputNode({})
-        ctx = make_default_context(inputs={"prompt": "hello"})
-        with pytest.raises(NodeValidationError) as exc_info:
-            await node.execute({}, ctx)
-        assert "field" in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    async def test_empty_field_param_raises_validation_error(self):
-        """params.field 为空字符串，execute 抛 NodeValidationError。"""
-        node = TextInputNode({"field": ""})
-        ctx = make_default_context(inputs={"prompt": "hello"})
-        with pytest.raises(NodeValidationError):
-            await node.execute({}, ctx)
+    async def test_all_empty_returns_empty_string(self):
+        """所有来源都为空时，返回空字符串（不报错）。"""
+        node = TextInputNode({"value": ""})
+        request = InferRequest(variant="flux", inputs={})
+        ctx = make_default_context(
+            inputs={},
+            extra={"__infer_request__": request},
+        )
+        result = await node.execute({}, ctx)
+        assert result["text"] == ""
 
 
 # ===== 集成场景测试 =====
@@ -352,56 +258,38 @@ class TestTextInputNodeIntegration:
     """集成场景测试。"""
 
     @pytest.mark.asyncio
-    async def test_typical_prompt_workflow(self):
-        """典型文生图 prompt + negative_prompt 工作流。"""
-        prompt_node = TextInputNode({"field": "prompt", "required": True})
-        negative_node = TextInputNode({
-            "field": "negative_prompt",
-            "required": False,
-            "default": "low quality, blurry",
-        })
-        ctx = make_default_context(inputs={
-            "prompt": "a cute cat",
-            # negative_prompt 故意缺失，用默认值
-        })
-        prompt_result = await prompt_node.execute({}, ctx)
-        negative_result = await negative_node.execute({}, ctx)
-        assert prompt_result["text"] == "a cute cat"
-        assert negative_result["text"] == "low quality, blurry"
+    async def test_canvas_debugging_scenario(self):
+        """画布调试场景：用户在节点 textarea 中输入文本。"""
+        node = TextInputNode({"value": "一只可爱的猫咪坐在椅子上"})
+        ctx = make_default_context(inputs={})
+        result = await node.execute({}, ctx)
+        assert result["text"] == "一只可爱的猫咪坐在椅子上"
 
     @pytest.mark.asyncio
-    async def test_typical_full_request_workflow(self):
-        """完整请求工作流：prompt / negative / style 都存在。"""
+    async def test_api_call_scenario(self):
+        """API 调用场景：通过 ctx.inputs 注入文本。"""
+        node = TextInputNode({"value": ""})
+        ctx = make_default_context(inputs={"value": "a beautiful landscape"})
+        result = await node.execute({}, ctx)
+        assert result["text"] == "a beautiful landscape"
+
+    @pytest.mark.asyncio
+    async def test_infer_request_scenario(self):
+        """完整 InferRequest 调用场景。"""
+        node = TextInputNode({"value": ""})
         request = InferRequest(
             variant="flux",
-            inputs={
-                "prompt": "a cute cat in style of van gogh",
-                "negative_prompt": "blurry, low quality",
-                "style": "post-impressionism",
-            },
+            inputs={"value": "surreal painting of a floating island"},
         )
         ctx = make_default_context(extra={"__infer_request__": request})
-
-        prompt_node = TextInputNode({"field": "prompt"})
-        negative_node = TextInputNode({
-            "field": "negative_prompt",
-            "required": False,
-            "default": "",
-        })
-        style_node = TextInputNode({
-            "field": "style",
-            "required": False,
-            "default": "realism",
-        })
-
-        assert (await prompt_node.execute({}, ctx))["text"] == "a cute cat in style of van gogh"
-        assert (await negative_node.execute({}, ctx))["text"] == "blurry, low quality"
-        assert (await style_node.execute({}, ctx))["text"] == "post-impressionism"
+        result = await node.execute({}, ctx)
+        assert result["text"] == "surreal painting of a floating island"
 
     @pytest.mark.asyncio
-    async def test_numeric_field_as_text(self):
-        """数字字段（如 steps）作为文本读取。"""
-        node = TextInputNode({"field": "steps"})
-        ctx = make_default_context(inputs={"steps": 50})
+    async def test_multiline_text_scenario(self):
+        """多行文本场景（textarea 支持）。"""
+        multiline = "prompt line 1\nprompt line 2\nprompt line 3"
+        node = TextInputNode({"value": multiline})
+        ctx = make_default_context(inputs={})
         result = await node.execute({}, ctx)
-        assert result["text"] == "50"
+        assert result["text"] == multiline

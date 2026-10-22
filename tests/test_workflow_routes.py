@@ -1273,7 +1273,7 @@ class TestInferCategory:
 
     def test_sampler_category(self) -> None:
         class _N(BaseNode):
-            __module__ = "aireliable_engine.nodes.sampler.sampler"
+            __module__ = "aireliable_engine.nodes.sample.sampler"
             node_type = "Test"
             input_specs = []
             output_specs = []
@@ -1281,7 +1281,8 @@ class TestInferCategory:
             async def execute(self, inputs, ctx):
                 return {}
 
-        assert _infer_category(_N) == "sampler"
+        # v0.2.5 U5：sampler → sample（与 SDK SamplerNode.category 统一）
+        assert _infer_category(_N) == "sample"
 
     def test_decode_category(self) -> None:
         class _N(BaseNode):

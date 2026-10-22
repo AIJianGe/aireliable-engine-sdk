@@ -366,6 +366,15 @@ class HFSnapshotDownloader:
         # 镜像选择器实例（速度监控 + 自动切换）
         self._selector = _EngineHFMirrorSelector(mirrors=self.mirror_endpoints)
 
+        # v0.2.7+ 通用下载器重构：注入 HfHubDownloader 实例
+        # 委托 list_repo_files_with_retry / list_repo_tree_with_retry /
+        # download_file_with_retry / fallback_copy_blob_to_snapshot /
+        # is_mirror_issue 等通用方法，消除重复代码（R2/R3/R4/R6）
+        # 通过 duck typing 让 HfHubDownloader 兼容 _EngineHFMirrorSelector
+        # （需提供 mirrors 属性 + get_current_endpoint() + report_failure()）
+        from .hf_hub_downloader import HfHubDownloader
+        self._hf_hub_downloader = HfHubDownloader(selector=self._selector)
+
     async def download_to_cache(
         self,
         progress_cb: Optional[ProgressCallback] = None,
@@ -443,15 +452,10 @@ class HFSnapshotDownloader:
             except Exception as e:
                 last_err = e
                 err_msg = str(e)[:200]
-                # 判断是否镜像问题（308 / LocalEntryNotFoundError / ConnectError / Timeout）
-                is_mirror_issue = (
-                    "308" in err_msg
-                    or "LocalEntryNotFoundError" in type(e).__name__
-                    or "LocalEntryNotFoundError" in err_msg
-                    or "ConnectError" in type(e).__name__
-                    or "ConnectTimeout" in type(e).__name__
-                    or "TimeoutError" in type(e).__name__
-                )
+                # v0.2.7+ 委托给 HfHubDownloader.is_mirror_issue 静态方法
+                # 统一 6 条件判断（308 / LocalEntryNotFoundError / ConnectError /
+                # ConnectTimeout / TimeoutError）
+                is_mirror_issue = self._hf_hub_downloader.is_mirror_issue(e)
                 if is_mirror_issue and attempt < max_attempts - 1:
                     logger.warning(
                         "snapshot_download 失败（镜像问题），切换镜像重试: %s",
@@ -479,9 +483,11 @@ class HFSnapshotDownloader:
     ) -> list[str]:
         """下载指定子目录的所有文件到 HF 本地缓存。
 
-        v0.1.2 改造：多镜像站自动切换 + 速度监控。
-        - list_repo_files / list_repo_tree / hf_hub_download 失败时切镜像重试
-        - 每秒采样下载速度，持续慢速达 60s 自动切镜像
+        v0.2.7+ 改造：委托给 HfHubDownloader 通用方法。
+        - list_repo_files_with_retry / list_repo_tree_with_retry /
+          download_file_with_retry / fallback_copy_blob_to_snapshot /
+          is_mirror_issue 均统一委托，消除重复代码（R2/R3/R4/R6）
+        - 保留 _EngineHFMirrorSelector 进行速度监控 + 自动切换
         - HfApi 显式传 endpoint（不依赖 constants 缓存）
 
         Args:
@@ -499,18 +505,18 @@ class HFSnapshotDownloader:
         os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")
 
         try:
-            from huggingface_hub import HfApi, hf_hub_download
+            from huggingface_hub import HfApi
         except ImportError as e:
             raise RuntimeError(
                 "未安装 huggingface_hub，请用 "
                 "`uv run --project envs/image-ernie-image-gguf pip install huggingface_hub`"
             ) from e
 
-        # 列出仓库文件（含镜像切换重试）
-        current_endpoint = self._selector.get_current_endpoint()
-        api = HfApi(endpoint=current_endpoint)
-
-        all_files = await self._list_repo_files_with_retry(api, subdir)
+        # v0.2.7+ 委托给 HfHubDownloader 列出仓库文件（含镜像切换重试）
+        all_files = await self._hf_hub_downloader.list_repo_files_with_retry(
+            repo_id=self.repo_id,
+            cancel_event=cancel_event,
+        )
         current_endpoint = self._selector.get_current_endpoint()
         api = HfApi(endpoint=current_endpoint)  # 可能已切换
 
@@ -527,9 +533,14 @@ class HFSnapshotDownloader:
             subdir, len(target_files), target_files[:5],
         )
 
-        # 查询文件大小（含镜像切换重试）
+        # v0.2.7+ 委托给 HfHubDownloader 查询文件大小（含镜像切换重试）
         try:
-            tree_files = await self._list_repo_tree_with_retry(api, subdir)
+            tree_files = await self._hf_hub_downloader.list_repo_tree_with_retry(
+                repo_id=self.repo_id,
+                path=subdir,
+                recursive=True,
+                cancel_event=cancel_event,
+            )
             current_endpoint = self._selector.get_current_endpoint()
             api = HfApi(endpoint=current_endpoint)
         except Exception as e:
@@ -571,9 +582,11 @@ class HFSnapshotDownloader:
                 self._selector.get_current_endpoint(),
             )
 
-            # 单文件下载（含镜像切换重试）
-            local_path = await self._download_file_with_retry(
-                hf_hub_download, filename, cancel_event,
+            # v0.2.7+ 委托给 HfHubDownloader 单文件下载（含镜像切换重试 + fallback copy）
+            local_path = await self._hf_hub_downloader.download_file_with_retry(
+                repo_id=self.repo_id,
+                filename=filename,
+                cancel_event=cancel_event,
             )
             # 切换后重建 api
             new_ep = self._selector.get_current_endpoint()
@@ -585,7 +598,7 @@ class HFSnapshotDownloader:
             downloaded_bytes += file_size
             self._selector.report_result(success=True)
 
-            # 速度上报 + 切换检查
+            # 速度上报 + 切换检查（保留 _EngineHFMirrorSelector 的紧耦合逻辑）
             now = asyncio.get_event_loop().time()
             elapsed = now - last_speed_sample_ts
             if elapsed >= 1.0:
@@ -620,7 +633,12 @@ class HFSnapshotDownloader:
         return downloaded_paths
 
     async def _list_repo_files_with_retry(self, api, subdir: str) -> list[str]:
-        """列出仓库文件（含镜像切换重试）。"""
+        """列出仓库文件（含镜像切换重试）。
+
+        .. deprecated:: v0.2.7+
+            改用 ``self._hf_hub_downloader.list_repo_files_with_retry``。
+            本方法保留作为兜底，仅当 ``HfHubDownloader`` 不可用时使用。
+        """
         max_retries = len(self._selector.mirrors)
         last_err: Exception = Exception("未尝试")
         for attempt in range(max_retries):
@@ -641,7 +659,12 @@ class HFSnapshotDownloader:
         raise RuntimeError(f"list_repo_files 所有镜像均失败: {last_err}")
 
     async def _list_repo_tree_with_retry(self, api, subdir: str) -> list:
-        """列出仓库子目录树（含镜像切换重试）。"""
+        """列出仓库子目录树（含镜像切换重试）。
+
+        .. deprecated:: v0.2.7+
+            改用 ``self._hf_hub_downloader.list_repo_tree_with_retry``。
+            本方法保留作为兜底。
+        """
         from huggingface_hub import HfApi
         max_retries = len(self._selector.mirrors)
         last_err: Exception = Exception("未尝试")
@@ -673,7 +696,9 @@ class HFSnapshotDownloader:
     ) -> str:
         """下载单个文件（含镜像切换重试）。
 
-        Windows symlink 失败时不切镜像，直接 fallback copy。
+        .. deprecated:: v0.2.7+
+            改用 ``self._hf_hub_downloader.download_file_with_retry``。
+            本方法保留作为兜底。
         """
         from huggingface_hub import HfApi
         max_retries = len(self._selector.mirrors)
@@ -761,8 +786,9 @@ class HFSnapshotDownloader:
     def _fallback_copy_blob_to_snapshot(self, filename: str) -> str:
         """Windows symlink 失败时的 fallback：手动 copy blobs → snapshots。
 
-        与 core 层的 _fallback_copy_blob_to_snapshot 逻辑一致，
-        但 engine 进程独立实现（不依赖 core）。
+        .. deprecated:: v0.2.7+
+            改用 ``HfHubDownloader.fallback_copy_blob_to_snapshot`` 静态方法。
+            本方法保留作为兜底。
         """
         import shutil
         from pathlib import Path

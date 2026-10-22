@@ -579,3 +579,214 @@ class TestThreadSafety:
             t.join()
 
         assert all(r is N for r in results)
+
+
+# ===========================================================================
+# v0.2.5 P0-J2：discover_local_dir 测试
+# ===========================================================================
+
+class TestDiscoverLocalDir:
+    """discover_local_dir 本地目录节点发现测试。"""
+
+    def test_normal_load(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """正常加载：有效节点文件被发现并注册。"""
+        node_file = tmp_path / "my_node.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode, PortSpec\n"
+            "\n"
+            "class MyCustomNode(BaseNode):\n"
+            "    node_type = 'MyCustomNode'\n"
+            "    input_specs = []\n"
+            "    output_specs = [PortSpec(name='out', type='text')]\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {'out': 'hello'}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert "MyCustomNode" in result
+        assert isolated_registry.contains("MyCustomNode")
+
+    def test_load_failure_skipped(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """加载失败：语法错误文件被跳过，记录错误。"""
+        bad_file = tmp_path / "bad_node.py"
+        bad_file.write_text("this is not valid python !!!", encoding="utf-8")
+
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert result == {}
+        assert len(isolated_registry) == 0
+        # 错误被记录
+        errors = isolated_registry.list_errors()
+        assert len(errors) == 1
+        assert "bad_node.py" in errors
+
+    def test_empty_directory(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """空目录：返回空字典。"""
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert result == {}
+
+    def test_nonexistent_directory(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """不存在的目录：返回空字典。"""
+        result = isolated_registry.discover_local_dir(tmp_path / "nonexistent")
+        assert result == {}
+
+    def test_multiple_nodes_in_file(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """单文件多节点：嵌套类全部被发现。"""
+        node_file = tmp_path / "multi.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode, PortSpec\n"
+            "\n"
+            "class NodeA(BaseNode):\n"
+            "    node_type = 'NodeA'\n"
+            "    input_specs = []\n"
+            "    output_specs = []\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n"
+            "\n"
+            "class NodeB(BaseNode):\n"
+            "    node_type = 'NodeB'\n"
+            "    input_specs = []\n"
+            "    output_specs = []\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert "NodeA" in result
+        assert "NodeB" in result
+        assert len(isolated_registry) == 2
+
+    def test_skip_underscore_files(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """下划线开头的文件被跳过（如 __init__.py、_template.py）。"""
+        init_file = tmp_path / "__init__.py"
+        init_file.write_text("# package init\n", encoding="utf-8")
+        template_file = tmp_path / "_template.py"
+        template_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class TemplateNode(BaseNode):\n"
+            "    node_type = 'Template'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+        # 正常节点文件
+        node_file = tmp_path / "good.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class GoodNode(BaseNode):\n"
+            "    node_type = 'GoodNode'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert "GoodNode" in result
+        assert "Template" not in result
+        assert len(isolated_registry) == 1
+
+    def test_override_existing(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """override=True 时覆盖已注册节点。"""
+        # 先注册一个
+        class OriginalNode(BaseNode):
+            node_type = "OverrideMe"
+            async def execute(self, inputs, ctx):
+                return {}
+
+        isolated_registry.register("OverrideMe", OriginalNode)
+        assert isolated_registry.get("OverrideMe") is OriginalNode
+
+        # 用 override=True 覆盖
+        node_file = tmp_path / "override.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class OverrideMe(BaseNode):\n"
+            "    node_type = 'OverrideMe'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {'overridden': True}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path, override=True)
+        assert "OverrideMe" in result
+        assert isolated_registry.get("OverrideMe") is not OriginalNode
+
+    def test_missing_node_type_recorded(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """缺少 node_type 属性的节点类被跳过并记录错误。"""
+        node_file = tmp_path / "no_type.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class NoTypeNode(BaseNode):\n"
+            "    node_type = ''\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert result == {}
+        errors = isolated_registry.list_errors()
+        assert len(errors) >= 1
+
+    def test_recursive_scan(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """递归扫描子目录。"""
+        sub_dir = tmp_path / "sub" / "deep"
+        sub_dir.mkdir(parents=True)
+        node_file = sub_dir / "nested.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class NestedNode(BaseNode):\n"
+            "    node_type = 'NestedNode'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path, recursive=True)
+        assert "NestedNode" in result
+
+    def test_non_recursive_scan(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """非递归扫描不进入子目录。"""
+        sub_dir = tmp_path / "sub"
+        sub_dir.mkdir()
+        node_file = sub_dir / "nested.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class NestedNode(BaseNode):\n"
+            "    node_type = 'NestedNode'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+        top_file = tmp_path / "top.py"
+        top_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "class TopNode(BaseNode):\n"
+            "    node_type = 'TopNode'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path, recursive=False)
+        assert "TopNode" in result
+        assert "NestedNode" not in result
+
+    def test_imported_baseclass_skipped(self, isolated_registry: NodeRegistry, tmp_path) -> None:
+        """import 进来的 BaseNode 基类本身不被注册。"""
+        node_file = tmp_path / "user_node.py"
+        node_file.write_text(
+            "from aireliable_engine.node import BaseNode\n"
+            "\n"
+            "class UserNode(BaseNode):\n"
+            "    node_type = 'UserNode'\n"
+            "    async def execute(self, inputs, ctx):\n"
+            "        return {}\n",
+            encoding="utf-8",
+        )
+
+        result = isolated_registry.discover_local_dir(tmp_path)
+        assert "UserNode" in result
+        # BaseNode 本身不应被注册
+        assert "BaseNode" not in result

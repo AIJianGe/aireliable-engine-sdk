@@ -113,6 +113,30 @@ class BaseNode(ABC):
         - input_specs: list[PortSpec]    输入端口规格（可为空列表）
         - output_specs: list[PortSpec]   输出端口规格（可为空列表）
 
+    v0.2.5 新增：子类应设置前端元数据类属性（供 NodeRouter 自动暴露给画布 UI）：
+        - title: str             中文显示名（如「ERNIE-Image 主模型加载」）
+        - icon: str              emoji 图标（如「📦」），默认「•」
+        - description: str       简短描述（tooltip 用），若空则从 __doc__ 提取首段
+        - params_schema: dict   参数 schema（前端属性面板渲染用），结构：
+                                 {param_name: {type, label, required, default, options, ...}}
+
+    v0.2.5 节点系统优化（P-CategoryFix）：子类可显式声明分类类属性：
+        - category: str          一级分类（input / loader / encode / sampler /
+                                 decode / lora / output / custom）。
+                                 若未声明，NodeRouter 用 ``_infer_category`` 从模块路径推断。
+                                 **引擎自定义节点（模块路径非 ``aireliable_engine.nodes.*``）
+                                 必须显式声明 category**，否则会被归到 ``custom``。
+        - subcategory: str       二级分类（如 ``text`` / ``images`` / ``model`` / ``vae``）。
+                                 若未声明，前端按 ``generic`` 归到「其他」子分类。
+                                 建议与前端 ``NODE_CATEGORIES[cat].subcategories`` 的 key 对齐。
+
+    v0.2.5 节点系统优化（P1-1）：params_schema 各项支持 ``advanced`` 字段：
+        - advanced: bool         是否为高级参数（默认 False）。
+                                 True 时前端属性面板将其折叠到「高级选项 ▾」区域，
+                                 降低新用户认知负担。API 调用不受影响（仍按 param_name 注入）。
+        典型用法：核心参数（如 steps / guidance / prompt.value）不标记 advanced，
+                  调优参数（如 device / call_timeout / loras）标记 advanced=true。
+
     子类必须实现：
         - async execute(inputs, ctx) -> dict
 
@@ -138,6 +162,14 @@ class BaseNode(ABC):
             input_specs = []
             output_specs = [PortSpec(name="text", type="text")]
 
+            # v0.2.5 前端元数据
+            title = "文本输入"
+            icon = "📝"
+            description = "从工作流输入字段读取文本"
+            params_schema = {
+                "field": {"type": "string", "required": True, "label": "字段名"},
+            }
+
             def __init__(self, params: dict):
                 super().__init__(params)
                 self.field = params.get("field", "prompt")
@@ -162,6 +194,15 @@ class BaseNode(ABC):
     node_type: str = ""
     input_specs: list[PortSpec] = []
     output_specs: list[PortSpec] = []
+
+    # ===== v0.2.5 新增：前端元数据类属性（子类可覆盖）=====
+    # NodeRouter._node_to_definition() 通过 getattr() 读取这些属性，
+    # 用于把节点类序列化为前端 NODE_DEFINITIONS 兼容格式（画布 UI 渲染用）。
+    # 子类不覆盖时使用以下默认值。
+    title: str = ""           # 中文显示名（空时 NodeRouter 兜底用 node_type）
+    icon: str = "•"            # emoji 图标
+    description: str = ""      # 简短描述（空时 NodeRouter 从 __doc__ 提取首段）
+    params_schema: dict = {}   # 参数 schema（前端属性面板渲染用）
 
     # ===== 实例属性 =====
 

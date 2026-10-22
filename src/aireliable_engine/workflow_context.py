@@ -254,6 +254,23 @@ class WorkflowContext:
         variant: 引擎变体名（如 "default" / "fp16" / "q4_k_m"）。
         device: 推理设备字符串（如 "cuda:0" / "cpu"）。
         models_root: 模型根目录。节点通过此路径查找模型文件。
+
+            v0.2.1 覆盖契约（决策 H：Optional + 文档化覆盖契约）：
+                - 值来源链路（优先级从高到低）：
+                    1. 调度层环境变量 AIRELIABLE_MODELS_ROOT
+                       （由 CoreConfig.models_root 注入子进程环境）
+                    2. 引擎 EngineConfig.models_root（命令行 --models-root 或 MODELS_ROOT 环境变量）
+                    3. WorkflowEngine.__init__ 的 models_root 参数
+                       （由子类 super().__init__(models_root=config.models_root) 注入）
+                    4. 默认值 Path("models/")（向后兼容 v0.1/v0.2 引擎）
+
+                - 不变性：创建后不应修改（除 cancel_event 状态）
+                - 节点访问约定：
+                    * 主模型路径：ctx.models_root / manifest.models.model_files[?].target_dir / filename
+                    * 不应硬编码路径，必须通过 manifest 声明的 target_dir 拼接
+                    * 避免与 CHECKPOINT_SUBDIR 常量混用（v0.2.1 起改读环境变量 AIRELIABLE_MODEL_LAYOUT_BASE）
+
+                - 详见：PR/architecture.md §16.6 manifest.yaml 落地路径 + §16.7 双源真相消除
         task_id: 任务 ID（用于日志追踪 / 文件命名）。
         progress_reporter: 进度上报器。节点调用 ctx.report_progress() 推送进度。
         cancel_event: 取消事件。节点应定期检查并主动退出。

@@ -37,6 +37,7 @@ from PIL import Image as PILImage
 from PIL.PngImagePlugin import PngInfo
 
 from ...node import BaseNode, NodeValidationError, PortSpec
+from ...node_registry import register_node
 from ...types import Image, Images
 from ...workflow_context import WorkflowContext
 
@@ -73,6 +74,7 @@ _LOSSLESS_FORMATS = {"WEBP"}
 _OPTIMIZE_FORMATS = {"PNG", "JPEG", "WEBP"}
 
 
+@register_node
 class ImageSaveNode(BaseNode):
     """图片保存节点。
 
@@ -115,6 +117,66 @@ class ImageSaveNode(BaseNode):
     """
 
     node_type = "ImageSave"
+    # v0.2.5 P1-7：新增 params_schema（含 advanced 字段），供 NodeRouter 暴露给画布 UI
+    # 之前 ImageSave 缺少 params_schema，引擎运行时 GET /nodes/definitions 返回空 params，
+    # 覆盖前端 fallback 后属性面板不显示任何参数。此 schema 与前端 fallback 保持一致。
+    title = "图片保存"
+    icon = "💾"
+    description = "将 Images 保存到 output 目录并返回 URL 列表"
+    # v0.2.5 P-CategoryFix：显式声明分类（与前端 NODE_CATEGORIES 对齐）
+    # 避免引擎版 ImageSave 覆盖平台 fallback 后 category 变成 custom
+    category = "output"
+    subcategory = "image"
+    params_schema = {
+        "format": {
+            "type": "enum", "required": False, "default": "PNG", "label": "格式",
+            "options": ["PNG", "JPEG", "WEBP"],
+            "format": "enum",
+            "description": "图片格式（PNG / JPEG / WEBP）",
+        },
+        "filename_template": {
+            "type": "string", "required": False,
+            "default": "{task_id}_{index:03d}.{ext}", "label": "文件名模板",
+            "description": "文件名模板（支持 {task_id} / {index} / {timestamp} / {ext}）",
+        },
+        "quality": {
+            "type": "integer", "required": False, "default": None, "label": "质量",
+            "min": 1, "max": 100,
+            "advanced": True,
+            "description": "JPEG/WEBP 质量 1-95（None=默认，PNG 忽略）",
+        },
+        "output_dir": {
+            "type": "string", "required": False, "default": None, "label": "输出目录",
+            "format": "file-paths",
+            "advanced": True,
+            "description": "输出目录（None=output_root/files/，点击 📁 按钮选择目录）",
+        },
+        "base_url": {
+            "type": "string", "required": False, "default": None, "label": "URL 前缀",
+            "advanced": True,
+            "description": "URL 前缀（None=返回相对路径 /files/xxx.png）",
+        },
+        "include_workflow_info": {
+            "type": "boolean", "required": False, "default": False, "label": "写入工作流信息",
+            "advanced": True,
+            "description": "是否将 workflow 信息写入 PNG info",
+        },
+        "save_metadata_json": {
+            "type": "boolean", "required": False, "default": False, "label": "保存 metadata.json",
+            "advanced": True,
+            "description": "是否同时保存 metadata.json 文件",
+        },
+        "optimize": {
+            "type": "boolean", "required": False, "default": False, "label": "优化大小",
+            "advanced": True,
+            "description": "是否优化图片大小（PNG/JPEG 用 optimize=True，WEBP 用 method=6）",
+        },
+        "lossless": {
+            "type": "boolean", "required": False, "default": False, "label": "WEBP 无损",
+            "advanced": True,
+            "description": "WEBP 无损压缩（仅 WEBP 格式生效）",
+        },
+    }
     input_specs: list[PortSpec] = [
         PortSpec(
             name="images",

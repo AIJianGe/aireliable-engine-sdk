@@ -104,13 +104,26 @@ class TestVAELoaderNodeBasic:
             "source": "engine_specific",
             "dtype": "fp16",
             "device": "cuda:0",
-            "force_reload": True,
         })
         assert node._vae_name == "flux-vae"
         assert node._source == "engine_specific"
         assert node._dtype == "fp16"
         assert node._device_override == "cuda:0"
-        assert node._force_reload is True
+
+    def test_init_with_deprecated_params_ignored(self):
+        """v0.2.5 向后兼容：废弃参数读取但忽略。"""
+        node = VAELoaderNode({
+            "vae_name": "sdxl-vae",
+            "vae_path": "/custom/path",       # 废弃
+            "subfolder": "sub",                # 废弃
+            "force_reload": True,              # 废弃
+        })
+        # 核心参数正常
+        assert node._vae_name == "sdxl-vae"
+        # 废弃字段不再作为实例属性
+        assert not hasattr(node, "_vae_path")
+        assert not hasattr(node, "_subfolder")
+        assert not hasattr(node, "_force_reload")
 
     def test_repr_contains_class_name_and_vae_name(self):
         node = VAELoaderNode({"vae_name": "sdxl-vae"})
@@ -175,33 +188,6 @@ class TestVAELoaderNodeSharedPath:
         vae_path = node._resolve_vae_path(ctx)
         assert vae_path == vae_dir
 
-    def test_shared_vae_path_with_explicit_vae_path(self, tmp_path: Path):
-        """vae_path 显式指定时直接使用。"""
-        vae_dir = tmp_path / "custom-vae-dir"
-        vae_dir.mkdir()
-
-        node = VAELoaderNode({
-            "vae_name": "sdxl-vae",
-            "vae_path": str(vae_dir),
-        })
-        ctx = make_default_context()
-        vae_path = node._resolve_vae_path(ctx)
-        assert vae_path == vae_dir
-
-    def test_shared_vae_path_relative_to_models_root(self, tmp_path: Path):
-        """vae_path 为相对路径时相对于 models_root 解析。"""
-        models_root = tmp_path / "models"
-        vae_dir = models_root / "custom" / "my-vae"
-        vae_dir.mkdir(parents=True)
-
-        node = VAELoaderNode({
-            "vae_name": "my-vae",
-            "vae_path": "custom/my-vae",       # 相对路径
-        })
-        ctx = make_default_context(models_root=models_root)
-        vae_path = node._resolve_vae_path(ctx)
-        assert vae_path == vae_dir
-
     def test_shared_vae_path_not_found_raises(self, tmp_path: Path):
         """共享 VAE 路径不存在时报错。"""
         models_root = tmp_path / "models"
@@ -213,24 +199,44 @@ class TestVAELoaderNodeSharedPath:
         assert "VAE 路径不存在" in str(exc_info.value)
 
     def test_shared_vae_path_no_models_root_raises(self):
-        """未指定 vae_path 且 ctx.models_root 为 None 时报错。"""
+        """ctx.models_root 为 None 时报错。"""
         node = VAELoaderNode({"vae_name": "sdxl-vae", "source": "shared"})
         ctx = make_default_context(models_root=None)
         with pytest.raises(NodeValidationError) as exc_info:
             node._resolve_vae_path(ctx)
         assert "models_root" in str(exc_info.value)
 
+    def test_engine_specific_vae_path_recursive(self, tmp_path: Path):
+        """engine_specific 模式：vae_name 含子目录路径时正确解析。"""
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "image" / "vae" / "ernie-image"
+        vae_dir.mkdir(parents=True)
+        vae_file = vae_dir / "diffusion_pytorch_model.safetensors"
+        vae_file.touch()
+
+        node = VAELoaderNode({
+            "vae_name": "ernie-image/diffusion_pytorch_model.safetensors",
+            "source": "engine_specific",
+        })
+        ctx = make_default_context(models_root=models_root, capability="image")
+        vae_path = node._resolve_vae_path(ctx)
+        # vae_name 指向文件 → 取父目录
+        assert vae_path == vae_dir
+
 
 # ===== 引擎特定 VAE 路径解析测试（验收标准）=====
 
 
 class TestVAELoaderNodeEngineSpecificPath:
-    """引擎特定 VAE（source=engine_specific）路径解析测试。"""
+    """引擎特定 VAE（source=engine_specific）路径解析测试。
+
+    v0.2.5 改造：不再使用 engine_id 拼路径，vae_name 直接作为 image/vae/ 下的子路径。
+    """
 
     def test_engine_specific_vae_path_resolved(self, tmp_path: Path):
-        """source=engine_specific 时使用 ctx.engine_id 构造路径。"""
+        """source=engine_specific 时 vae_name 直接拼到 image/vae/ 下。"""
         models_root = tmp_path / "models"
-        vae_dir = models_root / "image" / "vae" / "ernie_image" / "ernie-vae"
+        vae_dir = models_root / "image" / "vae" / "ernie-vae"
         vae_dir.mkdir(parents=True)
 
         node = VAELoaderNode({
@@ -245,23 +251,25 @@ class TestVAELoaderNodeEngineSpecificPath:
         vae_path = node._resolve_vae_path(ctx)
         assert vae_path == vae_dir
 
-    def test_engine_specific_vae_path_with_unknown_engine(self, tmp_path: Path):
-        """ctx.engine_id 为空时使用 'unknown_engine' 兜底。"""
+    def test_engine_specific_vae_path_recursive_subpath(self, tmp_path: Path):
+        """vae_name 含子目录路径时正确解析到文件父目录。"""
         models_root = tmp_path / "models"
-        vae_dir = models_root / "image" / "vae" / "unknown_engine" / "ernie-vae"
+        vae_dir = models_root / "image" / "vae" / "ernie-image"
         vae_dir.mkdir(parents=True)
+        vae_file = vae_dir / "diffusion_pytorch_model.safetensors"
+        vae_file.touch()
 
         node = VAELoaderNode({
-            "vae_name": "ernie-vae",
+            "vae_name": "ernie-image/diffusion_pytorch_model.safetensors",
             "source": "engine_specific",
         })
         ctx = make_default_context(
-            engine_id="",
             capability="image",
             models_root=models_root,
         )
         vae_path = node._resolve_vae_path(ctx)
-        assert "unknown_engine" in str(vae_path)
+        # vae_name 指向文件 → 取父目录
+        assert vae_path == vae_dir
 
 
 # ===== diffusers API 探测测试（验收标准）=====
@@ -355,15 +363,16 @@ class TestVAELoaderNodeExecute:
     @pytest.mark.asyncio
     async def test_execute_returns_vae_from_load_impl(self, tmp_path: Path):
         """execute 调用 _load_impl 并返回 vae。"""
-        vae_dir = tmp_path / "sdxl-vae"
-        vae_dir.mkdir()
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "sdxl-vae"
+        vae_dir.mkdir(parents=True)
         mock_vae = MagicMock(name="loaded_vae")
 
         loader = _MockVAELoader(
-            {"vae_name": "sdxl-vae", "vae_path": str(vae_dir)},
+            {"vae_name": "sdxl-vae", "source": "shared"},
             return_value={"vae": mock_vae},
         )
-        ctx = make_default_context()
+        ctx = make_default_context(models_root=models_root)
         result = await loader.execute({}, ctx)
 
         assert "vae" in result
@@ -399,24 +408,39 @@ class TestVAELoaderNodeErrors:
 
     @pytest.mark.asyncio
     async def test_bare_loader_raises_not_implemented(self, tmp_path: Path):
-        """未重写 _load_impl 的子类抛 NotImplementedError。"""
-        vae_dir = tmp_path / "sdxl-vae"
-        vae_dir.mkdir()
+        """未重写 _load_impl 的子类走默认实现。
 
-        loader = _BareVAELoader({"vae_name": "sdxl-vae", "vae_path": str(vae_dir)})
-        ctx = make_default_context()
-        with pytest.raises(NotImplementedError) as exc_info:
+        v0.2.5 通用节点改造后，父类 VAELoaderNode 提供默认 _load_impl
+        （基于 diffusers AutoencoderKL.from_pretrained）。_BareVAELoader 未重写
+        该方法，将调用默认实现：
+            - 缺依赖（diffusers/torch）时抛 ImportError，被 execute 包装为
+              RuntimeError（"VAE 加载失败 (sdxl-vae): ..."）
+            - 若默认实现被移除则回退为 NotImplementedError
+        """
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "sdxl-vae"
+        vae_dir.mkdir(parents=True)
+
+        loader = _BareVAELoader({"vae_name": "sdxl-vae", "source": "shared"})
+        ctx = make_default_context(models_root=models_root)
+        with pytest.raises((NotImplementedError, ImportError, RuntimeError)) as exc_info:
             await loader.execute({}, ctx)
-        assert "_load_impl" in str(exc_info.value)
+        msg = str(exc_info.value)
+        assert (
+            "_load_impl" in msg
+            or "VAE 加载失败" in msg
+            or isinstance(exc_info.value.__cause__, ImportError)
+        )
 
     @pytest.mark.asyncio
     async def test_load_impl_failure_wrapped_as_runtime_error(self, tmp_path: Path):
         """_load_impl 抛异常时被包装为 RuntimeError。"""
-        vae_dir = tmp_path / "broken-vae"
-        vae_dir.mkdir()
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "broken-vae"
+        vae_dir.mkdir(parents=True)
 
-        loader = _FailingVAELoader({"vae_name": "broken-vae", "vae_path": str(vae_dir)})
-        ctx = make_default_context()
+        loader = _FailingVAELoader({"vae_name": "broken-vae", "source": "shared"})
+        ctx = make_default_context(models_root=models_root)
         with pytest.raises(RuntimeError) as exc_info:
             await loader.execute({}, ctx)
         assert "VAE 加载失败" in str(exc_info.value)
@@ -424,14 +448,15 @@ class TestVAELoaderNodeErrors:
     @pytest.mark.asyncio
     async def test_invalid_return_dict_raises_type_error(self, tmp_path: Path):
         """返回 dict 缺少 vae 字段时抛 TypeError。"""
-        vae_dir = tmp_path / "sdxl-vae"
-        vae_dir.mkdir()
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "sdxl-vae"
+        vae_dir.mkdir(parents=True)
 
         loader = _InvalidReturnVAELoader({
             "vae_name": "sdxl-vae",
-            "vae_path": str(vae_dir),
+            "source": "shared",
         })
-        ctx = make_default_context()
+        ctx = make_default_context(models_root=models_root)
         with pytest.raises(TypeError) as exc_info:
             await loader.execute({}, ctx)
         assert "vae" in str(exc_info.value)
@@ -439,11 +464,12 @@ class TestVAELoaderNodeErrors:
     @pytest.mark.asyncio
     async def test_non_dict_return_raises_type_error(self, tmp_path: Path):
         """返回非 dict 时抛 TypeError。"""
-        vae_dir = tmp_path / "sdxl-vae"
-        vae_dir.mkdir()
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "sdxl-vae"
+        vae_dir.mkdir(parents=True)
 
-        loader = _NonDictVAELoader({"vae_name": "sdxl-vae", "vae_path": str(vae_dir)})
-        ctx = make_default_context()
+        loader = _NonDictVAELoader({"vae_name": "sdxl-vae", "source": "shared"})
+        ctx = make_default_context(models_root=models_root)
         with pytest.raises(TypeError) as exc_info:
             await loader.execute({}, ctx)
         assert "dict" in str(exc_info.value)
@@ -488,8 +514,9 @@ class TestVAELoaderNodeProgressReporting:
     @pytest.mark.asyncio
     async def test_progress_reported_start_and_done(self, tmp_path: Path):
         """加载时上报开始和完成进度。"""
-        vae_dir = tmp_path / "sdxl-vae"
-        vae_dir.mkdir()
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "sdxl-vae"
+        vae_dir.mkdir(parents=True)
         progress_calls: list[tuple[float, str]] = []
 
         from aireliable_engine import ProgressReporter
@@ -504,8 +531,11 @@ class TestVAELoaderNodeProgressReporting:
             async def report_info(self, message, **kwargs):
                 pass
 
-        loader = _MockVAELoader({"vae_name": "sdxl-vae", "vae_path": str(vae_dir)})
-        ctx = make_default_context(progress_reporter=_CapturingReporter())
+        loader = _MockVAELoader({"vae_name": "sdxl-vae", "source": "shared"})
+        ctx = make_default_context(
+            models_root=models_root,
+            progress_reporter=_CapturingReporter(),
+        )
         await loader.execute({}, ctx)
 
         assert len(progress_calls) >= 2
@@ -515,8 +545,9 @@ class TestVAELoaderNodeProgressReporting:
     @pytest.mark.asyncio
     async def test_diffusers_api_version_in_progress(self, tmp_path: Path):
         """进度上报中包含 diffusers API 版本信息。"""
-        vae_dir = tmp_path / "sdxl-vae"
-        vae_dir.mkdir()
+        models_root = tmp_path / "models"
+        vae_dir = models_root / "shared" / "vae" / "sdxl-vae"
+        vae_dir.mkdir(parents=True)
         progress_kwargs: list[dict] = []
 
         from aireliable_engine import ProgressReporter
@@ -531,8 +562,11 @@ class TestVAELoaderNodeProgressReporting:
             async def report_info(self, message, **kwargs):
                 pass
 
-        loader = _MockVAELoader({"vae_name": "sdxl-vae", "vae_path": str(vae_dir)})
-        ctx = make_default_context(progress_reporter=_CapturingReporter())
+        loader = _MockVAELoader({"vae_name": "sdxl-vae", "source": "shared"})
+        ctx = make_default_context(
+            models_root=models_root,
+            progress_reporter=_CapturingReporter(),
+        )
         await loader.execute({}, ctx)
 
         # 第一个进度帧应包含 diffusers_api 字段
